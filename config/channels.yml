@@ -56,3 +56,135 @@
   type: BS4K
   channel: '45280'
   serviceId: 102
+
+# --- BS (ISDB-S, 従来2K衛星, 右旋) ---
+# MULTI2 スクランブルを smb400-tuner.sh 内の b21dec が ACAS チップ経由で解除し、
+# 平文 MPEG-TS を出力（Mirakurun 標準 TSFilter で処理）。
+# channel=BSxx_y（xx=トランスポンダ番号, _y=相対TS）。IF は xx から、実 TS-ID は
+# smb400-tuner.sh の TS-ID 表（実機 NIT 由来）で解決して tunertest に渡す。
+#
+# 一覧は実機 NIT/SDT スキャン（2026-06-21, 右旋 BS01〜BS23）で全相対 TS を確認した結果。
+# 各局の ECM を ACAS チップへ投げて復号可否(rc)も確認済み:
+#   * BS07/11/17 は BS4K(ISDB-S3/TLV) 専用のため 2K では受からない。
+#   * 無料局(rc=0x0800)は本機で復号可。有料局(rc=0xa103)は本機未契約のため復号不可
+#     （契約のある ACAS チップなら b21dec で復号できる。参考として末尾にコメントで残置）。
+
+# 無料局（本機で復号確認済み rc=0x0800）
+- name: 'BS朝日1'
+  type: BS
+  channel: 'BS01_0'
+  serviceId: 151
+- name: 'BS朝日2'
+  type: BS
+  channel: 'BS01_0'
+  serviceId: 152
+- name: 'BS朝日3'
+  type: BS
+  channel: 'BS01_0'
+  serviceId: 153
+- name: 'BS-TBS'
+  type: BS
+  channel: 'BS01_1'
+  serviceId: 161
+- name: 'BS-TBS2'
+  type: BS
+  channel: 'BS01_1'
+  serviceId: 162
+- name: 'BS-TBS3'
+  type: BS
+  channel: 'BS01_1'
+  serviceId: 163
+- name: 'BSテレ東'
+  type: BS
+  channel: 'BS01_2'
+  serviceId: 171
+- name: 'BSテレ東2'
+  type: BS
+  channel: 'BS01_2'
+  serviceId: 172
+- name: 'BSテレ東3'
+  type: BS
+  channel: 'BS01_2'
+  serviceId: 173
+- name: 'BS11イレブン'
+  type: BS
+  channel: 'BS09_0'
+  serviceId: 211
+- name: 'BS12トゥエルビ'
+  type: BS
+  channel: 'BS09_2'
+  serviceId: 222
+- name: 'BS日テレ'
+  type: BS
+  channel: 'BS13_0'
+  serviceId: 141
+- name: 'BS日テレ2'
+  type: BS
+  channel: 'BS13_0'
+  serviceId: 142
+- name: 'BS日テレ3'
+  type: BS
+  channel: 'BS13_0'
+  serviceId: 143
+- name: 'BSフジ・181'
+  type: BS
+  channel: 'BS13_1'
+  serviceId: 181
+- name: 'BSフジ・182'
+  type: BS
+  channel: 'BS13_1'
+  serviceId: 182
+- name: 'BSフジ・183'
+  type: BS
+  channel: 'BS13_1'
+  serviceId: 183
+- name: '放送大学テレビ'
+  type: BS
+  channel: 'BS13_2'
+  serviceId: 231
+- name: '放送大学テレビ2'
+  type: BS
+  channel: 'BS13_2'
+  serviceId: 232
+- name: 'NHK BS'
+  type: BS
+  channel: 'BS15_0'
+  serviceId: 101
+- name: 'NHK BS (102)'
+  type: BS
+  channel: 'BS15_0'
+  serviceId: 102
+- name: 'BS10'
+  type: BS
+  channel: 'BS15_2'
+  serviceId: 200
+- name: 'BSよしもと'
+  type: BS
+  channel: 'BS23_1'
+  serviceId: 265
+- name: 'J:COM BS'
+  type: BS
+  channel: 'BS23_3'
+  serviceId: 260
+
+# 有料局（本機は未契約のため rc=0xa103 で復号不可。契約のあるチップなら有効化可）
+# - name: 'WOWOWプライム'
+#   type: BS
+#   channel: 'BS03_0'
+#   serviceId: 191
+# - name: 'WOWOWライブ'
+#   type: BS
+#   channel: 'BS05_0'
+#   serviceId: 192
+# - name: 'J SPORTS 4'
+#   type: BS
+#   channel: 'BS19_0'
+#   serviceId: 245
+# - name: 'WOWOWプラス'
+#   type: BS
+#   channel: 'BS21_0'
+#   serviceId: 252
+# - name: 'ディズニーch'
+#   type: BS
+#   channel: 'BS23_0'
+#   serviceId: 256

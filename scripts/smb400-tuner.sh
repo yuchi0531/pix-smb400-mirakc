@@ -28,17 +28,37 @@ BINDIR=/data/local/tmp
 
 case "$CHANNEL" in
     BS[0-9][0-9]_[0-9])
-        # BS (ISDB-S): BSxx_y — extract TP number and stream index from channel name
-        TPSTR=${CHANNEL#BS}       # "BS03_1" → "03_1"
-        TPSTR=${TPSTR%_*}         # "03_1"   → "03"
-        TP=$((TPSTR + 0))         # strip leading zero: "03" → 3
-        STREAM_ID=${CHANNEL##*_}  # "BS03_1" → "1"
+        # BS (ISDB-S, 従来2K): BSxx_y。xx=トランスポンダ番号で IF を算出。
+        TPSTR=${CHANNEL#BS}       # "BS15_0" → "15_0"
+        TPSTR=${TPSTR%_*}         # "15_0"   → "15"
+        TP=$((TPSTR + 0))         # strip leading zero
         IF_KHZ=$((1049480 + (TP - 1) / 2 * 38360))
-        # Background + wait so we can clean up tunertest on exit
-        "$BINDIR/tuner-stream-bs" 0 1 "$IF_KHZ" "$STREAM_ID" &
-        BS_PID=$!
-        trap "kill -9 $BS_PID 2>/dev/null; pkill -9 tunertest 2>/dev/null; exit 0" TERM INT
-        wait $BS_PID
+        # 1 トランスポンダに複数の相対 TS が多重されており、tunertest(mode=1) は
+        # _y(相対インデックス)ではなく実 MPEG TS-ID で TS を選択する。全国共通の
+        # BS TS-ID 表（実機 NIT から導出, 2026-06-21）で BSxx_y → TS-ID を引く。
+        case "$CHANNEL" in
+            BS01_0) TSID=16400 ;;  BS01_1) TSID=16401 ;;  BS01_2) TSID=16402 ;;
+            BS03_0) TSID=16432 ;;
+            BS05_0) TSID=17488 ;;
+            BS09_0) TSID=16528 ;;  BS09_2) TSID=16530 ;;
+            BS13_0) TSID=16592 ;;  BS13_1) TSID=16593 ;;  BS13_2) TSID=18130 ;;
+            BS15_0) TSID=16625 ;;  BS15_2) TSID=18675 ;;
+            BS19_0) TSID=18224 ;;
+            BS21_0) TSID=18256 ;;
+            BS23_0) TSID=18288 ;;  BS23_1) TSID=18801 ;;  BS23_3) TSID=18803 ;;
+            *)      TSID=0 ;;      # 未知: 当該トランスポンダの先頭 TS を自動選択
+        esac
+        # 2K BS is MULTI2-scrambled (NHK / 有料局). Descramble in-command via the
+        # ACAS chip (conventional/B-CAS CAS, APDU P2=0x02) so Mirakurun's TSFilter
+        # receives plain MPEG-TS.  b21dec needs the Android linker/vendor libs, so
+        # the pipe runs under chroot /proc/1/root (same as the BS4K path).  No key
+        # arg: the chip holds the broadcaster work key (Kw) from prior live EMM.
+        chroot /proc/1/root /system/bin/sh -c \
+            "$BINDIR/tuner-stream-bs 0 1 $IF_KHZ $TSID | $BINDIR/b21dec" &
+        CHROOT_PID=$!
+        trap "kill -9 $CHROOT_PID 2>/dev/null; pkill -9 -f 'tuner-stream-bs 0 1 $IF_KHZ' 2>/dev/null; pkill -9 -f b21dec 2>/dev/null; pkill -9 tunertest 2>/dev/null; exit 0" TERM INT
+        wait $CHROOT_PID
+        pkill -9 -f "tuner-stream-bs 0 1 $IF_KHZ" 2>/dev/null || true
         pkill -9 tunertest 2>/dev/null || true
         ;;
     4[0-9][0-9][0-9][0-9])

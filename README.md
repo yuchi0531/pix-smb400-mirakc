@@ -1,6 +1,6 @@
 # PIX-SMB400 Mirakurun
 
-PIX-SMB400（HiSilicon Hi3798CV200 搭載 Android TV）上で Mirakurun を実行し、BS4K / BS8K（ISDB-S3）を受信するためのプロジェクトです。
+PIX-SMB400（HiSilicon Hi3798CV200 搭載 Android TV）上で Mirakurun を実行し、BS4K / BS8K（ISDB-S3）および従来2K BS（ISDB-S）を受信するためのプロジェクトです。
 
 <img width="1052" height="822" alt="image" src="https://github.com/user-attachments/assets/fd564f7a-a7b6-4b5c-941d-a226162a170c" />
 
@@ -73,11 +73,13 @@ Part 3: 起動・確認
 │   └── setup_proot.sh               Alpine + Node.js 初回セットアップ
 ├── config/
 │   ├── tuners.yml                   Mirakurun チューナー設定
-│   ├── channels.yml                 BS4K / BS8K チャンネル一覧
+│   ├── channels.yml                 BS / BS4K / BS8K チャンネル一覧
 │   └── server.yml                   Mirakurun サーバー設定
 └── src/                             バイナリの C ソースコード（make build-bins でビルド）
-    ├── b61dec.c                     ACAS BS4K / BS8K デスクランブラー
+    ├── b61dec.c                     ACAS BS4K / BS8K デスクランブラー（ARIB STD-B61 / AES）
+    ├── b21dec.c                     従来2K BS MULTI2 デスクランブラー（ACAS 経由 / ARIB STD-B25）
     ├── tuner-stream-bs-ng.c         BS4K / BS8K（ISDB-S3）チューナー
+    ├── tuner-stream-bs.c            従来2K BS（ISDB-S, MPEG-TS）チューナー（mode=1）
     └── startup.c                    Android PIE 用 _start エントリポイント
 ```
 
@@ -259,7 +261,7 @@ Mirakurun のコードと設定ファイルがデバイスの `/data/local/tmp/m
 
 **6-1. バイナリをビルドする**
 
-`src/` の C ソースからバイナリ（`tuner-stream-bs-ng` / `b61dec`）をビルドします。
+`src/` の C ソースからバイナリ（`tuner-stream-bs-ng` / `b61dec` / `tuner-stream-bs` / `b21dec`）をビルドします。
 リンクには実機の Android システムライブラリが必要なため、 `make build-bins` が ADB 経由で自動取得します（デバイスが USB ブート中であること）。
 
 ```sh
@@ -274,8 +276,10 @@ make push-all ADB_TARGET=<デバイスのIPアドレス>:5555
 ```
 
 以下をデバイスにコピーします:
-- `bin/tuner-stream-bs-ng` — BS4K チューナー
-- `bin/b61dec` — デスクランブラー
+- `bin/tuner-stream-bs-ng` — BS4K / BS8K チューナー
+- `bin/b61dec` — BS4K / BS8K デスクランブラー（ACAS / AES）
+- `bin/tuner-stream-bs` — 従来2K BS チューナー（mode=1）
+- `bin/b21dec` — 従来2K BS デスクランブラー（ACAS 経由 / MULTI2）
 - `scripts/*.sh` — 各種スクリプト
 - `config/*.yml` — Mirakurun 設定
 
@@ -359,6 +363,39 @@ ffplay http://<デバイスのIPアドレス>:40772/api/channels/BS4K/45280/stre
 ```
 
 > BS8K は 7680×4320 / HEVC 10bit のため、再生・録画には相応の処理能力を持つ視聴環境が必要です。
+
+### 従来2K BS（ISDB-S）の受信について
+
+NHK BS などの**従来2K BS（ISDB-S, MPEG-TS）**にも対応しています。2K BS は ARIB STD-B25
+系の **MULTI2**（B-CAS 方式, CA_system_id 0x0005）でスクランブルされており、`smb400-tuner.sh`
+内の **`b21dec`** がオンデバイスの **ACAS チップ**経由で解除します（B-CAS カード不要）。
+BS4K の `b61dec`（ACAS-RMP / AES）とは別系統で、ACAS チップの**従来 CAS 機能**（APDU を
+ACAS モード P2=0x02 で送出）を使い、ECM から MULTI2 スクランブル鍵を取得します。
+
+`config/channels.yml` には例として NHK BS（BS15 / IF 1318000kHz / tsId 16625）が含まれます。
+
+| name | type | channel | serviceId |
+|------|------|---------|-----------|
+| NHK BS       | BS | BS15_0 | 101 |
+| NHK BS (102) | BS | BS15_0 | 102 |
+| NHK BS (103) | BS | BS15_0 | 103 |
+
+- channel は `BSxx_y`（xx=トランスポンダ番号, y=ストリーム）形式で、`smb400-tuner.sh` が
+  IF = `1049480 + (xx-1)/2 × 38360` kHz を算出して `tuner-stream-bs`（mode=1）でロックします。
+- `b21dec` は **ACAS マスターキー不要**です（放送局のワークキー Kw は、過去の実放送受信時に
+  EMM 経由でチップへ書き込まれた契約情報を利用するため）。逆に、当該局の契約・受信履歴が無い
+  チップでは ECM 応答が「視聴不可」となり復号できません。
+- 出力は平文 MPEG-TS なので Mirakurun の標準 TSFilter で処理されます（`tlvDecoder` 不要）。
+- ストリーム確認・視聴:
+
+```sh
+curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/stream" -o nhkbs.ts
+ffprobe nhkbs.ts          # mpeg2video 1440x1080 + aac が見えれば復号成功
+ffplay  "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/stream"
+```
+
+> 2K BS は受信できるトランスポンダ・サービスが地域/契約により異なります。`config/tuners.yml`
+> で `BS` タイプが有効になっている必要があります（本リポジトリでは有効化済み）。
 
 ### ffplay でリアルタイム視聴
 

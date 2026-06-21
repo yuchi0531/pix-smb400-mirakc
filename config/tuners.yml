@@ -4,12 +4,12 @@
 - name: SMB400
   types:
     # - GR
-    # - BS
+    - BS      # 従来2K BS (ISDB-S, MULTI2) — smb400-tuner.sh descrambles via b21dec
     - BS4K
   command: /data/local/tmp/smb400-tuner.sh <channel>
-  # No tlvDecoder: BS4K descrambling is done inside smb400-tuner.sh (the command
-  # outputs already-descrambled TLV). Mirakurun's chain is tuner → TLVFilter →
-  # tlvDecoder, but TLVFilter can't parse scrambled TLV, so a downstream decoder
-  # would be starved. Descrambling in the command lets the TLVFilter parse it.
+  # No tlvDecoder / decoder: both BS (2K) and BS4K descrambling happen inside
+  # smb400-tuner.sh, so the command emits already-descrambled MPEG-TS (BS) or TLV
+  # (BS4K). BS uses Mirakurun's standard TSFilter; BS4K uses the TLVFilter. A
+  # downstream decoder would be starved of scrambled data, so none is configured.
   tlvDecoder: null
   isDisabled: false

@@ -81,7 +81,17 @@ build-bins: android-libs
 	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so \
 	    $(ANDROID_LIBS)/libm.so $(ANDROID_LIBS)/ld-android.so \
 	    -o bin/b61dec
-	@echo "[+] Built bin/tuner-stream-bs-ng and bin/b61dec"
+	@echo "[*] Building tuner-stream-bs (ISDB-S mode=1)..."
+	$(CC_ARM) $(CFLAGS_ARM) \
+	    src/startup.c src/tuner-stream-bs.c \
+	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so $(ANDROID_LIBS)/ld-android.so \
+	    -o bin/tuner-stream-bs
+	@echo "[*] Building b21dec (従来2K BS MULTI2 descrambler)..."
+	$(CC_ARM) $(CFLAGS_ARM) -O2 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -Wl,--no-as-needed \
+	    src/startup.c src/b21dec.c \
+	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so $(ANDROID_LIBS)/ld-android.so \
+	    -o bin/b21dec
+	@echo "[+] Built bin/tuner-stream-bs-ng, b61dec, tuner-stream-bs, b21dec"
 
 # ---- デプロイ ----
 
@@ -89,9 +99,13 @@ push-bins:
 	@echo "[*] Pushing binaries..."
 	$(ADB) push bin/tuner-stream-bs-ng $(DEVICE_TMP)/tuner-stream-bs-ng
 	$(ADB) push bin/b61dec             $(DEVICE_TMP)/b61dec
+	$(ADB) push bin/tuner-stream-bs    $(DEVICE_TMP)/tuner-stream-bs
+	$(ADB) push bin/b21dec             $(DEVICE_TMP)/b21dec
 	$(ADB) shell chmod +x \
 	    $(DEVICE_TMP)/tuner-stream-bs-ng \
-	    $(DEVICE_TMP)/b61dec
+	    $(DEVICE_TMP)/b61dec \
+	    $(DEVICE_TMP)/tuner-stream-bs \
+	    $(DEVICE_TMP)/b21dec
 
 push-scripts:
 	@echo "[*] Pushing scripts..."
@@ -163,6 +177,7 @@ stop:
 	    kill -9 \$$(pgrep -f 'start_mirakurun[.]sh' 2>/dev/null) 2>/dev/null; \
 	    pkill -9 -f 'node.*server\.js' 2>/dev/null; \
 	    pkill -9 b61dec 2>/dev/null; \
+	    pkill -9 b21dec 2>/dev/null; \
 	    pkill -9 tunertest 2>/dev/null; \
 	    pkill -9 -f tuner-stream 2>/dev/null; \
 	    sleep 1; true"
