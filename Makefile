@@ -68,6 +68,11 @@ android-libs:
 # src/ から bin/ のバイナリ（tuner-stream-bs-ng, b61dec）をビルド
 build-bins: android-libs
 	@mkdir -p bin
+	@echo "[*] Building tuner-stream-ng (GR/ISDB-T)..."
+	$(CC_ARM) $(CFLAGS_ARM) \
+	    src/startup.c src/tuner-stream-ng.c \
+	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so $(ANDROID_LIBS)/ld-android.so \
+	    -o bin/tuner-stream-ng
 	@echo "[*] Building tuner-stream-bs-ng..."
 	$(CC_ARM) $(CFLAGS_ARM) \
 	    src/startup.c src/tuner-stream-bs-ng.c \
@@ -91,17 +96,19 @@ build-bins: android-libs
 	    src/startup.c src/b21dec.c \
 	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so $(ANDROID_LIBS)/ld-android.so \
 	    -o bin/b21dec
-	@echo "[+] Built bin/tuner-stream-bs-ng, b61dec, tuner-stream-bs, b21dec"
+	@echo "[+] Built bin/tuner-stream-ng, tuner-stream-bs-ng, b61dec, tuner-stream-bs, b21dec"
 
 # ---- デプロイ ----
 
 push-bins:
 	@echo "[*] Pushing binaries..."
+	$(ADB) push bin/tuner-stream-ng    $(DEVICE_TMP)/tuner-stream-ng
 	$(ADB) push bin/tuner-stream-bs-ng $(DEVICE_TMP)/tuner-stream-bs-ng
 	$(ADB) push bin/b61dec             $(DEVICE_TMP)/b61dec
 	$(ADB) push bin/tuner-stream-bs    $(DEVICE_TMP)/tuner-stream-bs
 	$(ADB) push bin/b21dec             $(DEVICE_TMP)/b21dec
 	$(ADB) shell chmod +x \
+	    $(DEVICE_TMP)/tuner-stream-ng \
 	    $(DEVICE_TMP)/tuner-stream-bs-ng \
 	    $(DEVICE_TMP)/b61dec \
 	    $(DEVICE_TMP)/tuner-stream-bs \

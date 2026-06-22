@@ -1,10 +1,44 @@
-# SMB400 channel list — BS4K only
-# smb400-tuner.sh derives IF frequency from stream ID (integer ≥40000).
-# Channels 45280 and 45745 removed — signal absent on this device.
+# SMB400 channel list — GR / BS / BS4K
+# smb400-tuner.sh derives IF frequency and mode from the channel value alone。
+# Channels 45280 と 45745 removed — signal absent on this device。
 #
 # serviceId: BS4K はサービススキャン対象外のため、サービス登録には serviceId の
 #            明示が必須。channel はチューナへ渡すストリームID、serviceId は SDT 上の
-#            実サービスID（別物。実機の SDT から確認した値）。
+#            実サービスID（別物。実機の SDT から確認した値）。GR/BS(2K) は標準の
+#            サービススキャンが効くため serviceId 省略でも自動登録される。
+
+# --- GR (ISDB-T 地上波) ---
+# 地デジも MULTI2(B-CAS) スクランブルのため smb400-tuner.sh 内の b21dec で解除する。
+# channel = 物理チャンネル番号(13-62)。IF = 473143 + (ch-13)*6000 kHz。
+# 【重要】物理チャンネル割り当ては地域で異なる。以下は関東(東京)の例。お住まいの
+#         地域に合わせて channel 番号を変更すること。serviceId は省略し、Mirakurun の
+#         サービススキャンに各局の自動登録を任せる。
+# ※ 本機は衛星のみで未検証。地上波アンテナ接続後、チップが地デジ EMM で Kw を取得
+#    すれば復号可能（一度も地上波を受信していないと当初は視聴不可になり得る）。
+- name: 'NHK総合'
+  type: GR
+  channel: '27'
+- name: 'NHK Eテレ'
+  type: GR
+  channel: '26'
+- name: '日テレ'
+  type: GR
+  channel: '25'
+- name: 'テレビ朝日'
+  type: GR
+  channel: '24'
+- name: 'TBS'
+  type: GR
+  channel: '22'
+- name: 'テレビ東京'
+  type: GR
+  channel: '23'
+- name: 'フジテレビ'
+  type: GR
+  channel: '21'
+- name: 'TOKYO MX'
+  type: GR
+  channel: '16'
 
 # --- BS4K (ISDB-S3, 衛星4K) ---
 - name: 'BS4K 45168'

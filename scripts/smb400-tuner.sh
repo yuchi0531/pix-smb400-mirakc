@@ -87,10 +87,21 @@ case "$CHANNEL" in
         pkill -9 tunertest 2>/dev/null || true
         ;;
     [0-9]*)
-        # GR (ISDB-T): integer channel 13-62
-        # ifKHz = 473143 + (ch - 13) * 6000
+        # GR (ISDB-T 地上波): 物理チャンネル 13-62。ifKHz = 473143 + (ch-13)*6000。
         IF_KHZ=$((473143 + (CHANNEL - 13) * 6000))
-        exec "$BINDIR/tuner-stream-ng" 0 0 0x20 "$IF_KHZ" 6000
+        # 地デジも MULTI2(B-CAS, CA_system_id 0x0005) スクランブルのため、2K BS と
+        # 同じく b21dec で in-command 復号する。tuner-stream-ng は libhi_msp(DMX) を
+        # dlopen し tunertest_oem を fork するため、b21dec ともども Android linker/
+        # vendor lib を要する → chroot /proc/1/root 配下で実行 (BS4K 経路と同じ)。
+        # ※ 地デジのワークキー Kw はチップが地上波 EMM 受信時に取得する。地上波を
+        #   一度も受信していないチップでは ECM が視聴不可(rc≠0x0800)になり得る。
+        chroot /proc/1/root /system/bin/sh -c \
+            "$BINDIR/tuner-stream-ng 0 0 0x20 $IF_KHZ 6000 | $BINDIR/b21dec" &
+        CHROOT_PID=$!
+        trap "kill -9 $CHROOT_PID 2>/dev/null; pkill -9 -f 'tuner-stream-ng 0 0 0x20 $IF_KHZ' 2>/dev/null; pkill -9 -f b21dec 2>/dev/null; pkill -9 tunertest 2>/dev/null; exit 0" TERM INT
+        wait $CHROOT_PID
+        pkill -9 -f "tuner-stream-ng 0 0 0x20 $IF_KHZ" 2>/dev/null || true
+        pkill -9 tunertest 2>/dev/null || true
         ;;
     *)
         echo "smb400-tuner.sh: unknown channel format '$CHANNEL'" >&2

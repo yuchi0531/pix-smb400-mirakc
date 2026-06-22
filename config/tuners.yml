@@ -3,13 +3,13 @@
 # No commandVars needed: GR=integer 13-62, BS=BSxx_y, BS4K=integer ≥40000.
 - name: SMB400
   types:
-    # - GR
+    - GR      # 地上波 (ISDB-T, MULTI2) — smb400-tuner.sh descrambles via b21dec
     - BS      # 従来2K BS (ISDB-S, MULTI2) — smb400-tuner.sh descrambles via b21dec
     - BS4K
   command: /data/local/tmp/smb400-tuner.sh <channel>
-  # No tlvDecoder / decoder: both BS (2K) and BS4K descrambling happen inside
-  # smb400-tuner.sh, so the command emits already-descrambled MPEG-TS (BS) or TLV
-  # (BS4K). BS uses Mirakurun's standard TSFilter; BS4K uses the TLVFilter. A
-  # downstream decoder would be starved of scrambled data, so none is configured.
+  # No tlvDecoder / decoder: GR・BS(2K)・BS4K いずれも smb400-tuner.sh 内で復号する
+  # ため、コマンドは復号済みの MPEG-TS (GR/BS) または TLV (BS4K) を出力する。
+  # GR/BS は Mirakurun 標準 TSFilter、BS4K は TLVFilter で処理。下流デコーダは
+  # スクランブル済みデータを受け取れず破綻するため何も設定しない。
   tlvDecoder: null
   isDisabled: false
