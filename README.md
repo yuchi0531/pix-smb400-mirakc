@@ -50,6 +50,28 @@ Part 3: 起動・確認
 
 ---
 
+## 開発環境（Dev Container）
+
+本リポジトリには [Dev Container](https://containers.dev/) 設定（[.devcontainer/](.devcontainer/)）が含まれています。
+ビルドに必要なツールチェーンを一括で用意できるため、**ローカルへ個別にパッケージをインストールせずに済みます**。
+
+VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen in Container」すると、
+[.devcontainer/Dockerfile](.devcontainer/Dockerfile) からビルド環境が構築されます。主な内容:
+
+- `gcc-arm-linux-gnueabi` + `libssl-dev` — `make build-bins`（ARM32 バイナリのクロスコンパイル）
+- `binwalk` + `cpio` — `kernel.img` から initramfs cpio を展開（[Step 0](#step-0-kernelimg-を入手して展開する)）
+- `adb` — デバイスとのバイナリ転送・android-libs 取得
+- `python3-pycryptodome` — `make_usb_boot.py`（`bootargs.bin` / RSA 鍵生成）
+- `nodejs` / `npm` / `git` / `curl` — Mirakurun-BS4K のクローン・ビルド・デプロイ
+- **docker-in-docker** feature — `build_initramfs.sh` / `make_usb_boot.py` がコンテナ内で `docker run` を使うため有効化済み
+
+> 以降の手順に出てくる `sudo apt install ...`（`gcc-arm-linux-gnueabi`・`libssl-dev`・`binwalk` 等）は、
+> Dev Container を使う場合はインストール済みのためスキップできます。
+> ただし USB メモリのフォーマット・マウント（[Step 1](#step-1-ブートファイルをビルドして-usb-メモリを準備する)）や
+> デバイスへの物理アクセスを伴う操作は、ホスト側で実施してください。
+
+---
+
 ## ディレクトリ構成
 
 ```
@@ -57,6 +79,9 @@ Part 3: 起動・確認
 ├── README.md                        このファイル
 ├── BOOT.md                          USB ブートイメージの仕組みと再ビルド手順
 ├── Makefile                         デプロイ・運用コマンド集
+├── .devcontainer/                   Dev Container 設定（ビルド環境一式）
+│   ├── devcontainer.json            Dev Container 定義（docker-in-docker feature 等）
+│   └── Dockerfile                   ビルド依存パッケージのインストール
 ├── boot/                            USB ブート用ファイル（ビルド手順は BOOT.md）
 │   ├── make_usb_boot.py             bootargs.bin / root_rsa_pub_crc.bin 生成スクリプト
 │   ├── patch_init.py                init バイナリパッチスクリプト（SELinux bypass 等）
