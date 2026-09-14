@@ -1,6 +1,10 @@
-# PIX-SMB400 Mirakurun
+# PIX-SMB400 mirakc
 
-PIX-SMB400（HiSilicon Hi3798CV200 搭載 Android TV）上で Mirakurun を実行し、地上波（ISDB-T）・BS（ISDB-S）・BS4K / BS8K（ISDB-S3）を受信するためのプロジェクトです。
+PIX-SMB400（HiSilicon Hi3798CV200 搭載 Android TV）上で [mirakc](https://github.com/mirakc/mirakc)（Rust 製 Mirakurun 互換 PVR バックエンド）を実行し、地上波（ISDB-T）・BS（ISDB-S）・BS4K / BS8K（ISDB-S3）を受信するためのプロジェクトです。
+
+本リポジトリは BS4K / BS8K の **TLV passthrough 対応** を追加した [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K) フォークを使用します。ARMv7 (glibc) 版の mirakc バイナリを `bin-armv7/` に同梱しているため、クロスビルド環境なしでもデプロイできます。
+
+> 以前は Mirakurun（Node.js）を Alpine + chroot で動かす構成でしたが、現在は mirakc（Rust, glibc ARMv7）に移行しています。
 
 <img width="1052" height="822" alt="image" src="https://github.com/user-attachments/assets/fd564f7a-a7b6-4b5c-941d-a226162a170c" />
 
@@ -26,15 +30,17 @@ Part 1: USB ブートで root を取る
   Step 2  PIX-SMB400 を USB ブートで起動する
   Step 3  ADB で接続確認する
 
-Part 2: Mirakurun のセットアップ
-  Step 4  Alpine Linux + Node.js をセットアップする
-  Step 5  Mirakurun をデプロイする
-  Step 6  バイナリをビルドしてデプロイする
-  Step 7  ACAS マスターキーを設定する
+Part 2: mirakc のセットアップ
+  Step 4  チューナーバイナリをビルドする（make build-bins）
+  Step 5  mirakc バイナリを用意する（bin-armv7/ 同梱・再ビルドは任意）
+  Step 6  Alpine Linux + glibc ランタイムをセットアップする（make setup-runtime）
+  Step 7  mirakc をデプロイする（make deploy-mirakc）
+  Step 8  ACAS マスターキーを設定する
 
 Part 3: 起動・確認
-  Step 8  Mirakurun を起動する
-  Step 9  BS4K ストリームを確認する
+  Step 9  mirakc を起動する（make start）
+  Step 10 ストリームを確認する（make test / make test-cs）
+  Step 11 自動起動を有効にする（initramfs 再ビルド）
 ```
 
 ---
@@ -45,7 +51,7 @@ Part 3: 起動・確認
 |------|------|
 | PIX-SMB400 本体 | USB ブートピンにアクセスできる状態 |
 | USB メモリ | FAT32 フォーマット、1 GB 以上 |
-| ビルド環境 | Docker（ブートファイル用）、`gcc-arm-linux-gnueabi` + `libssl-dev`（バイナリのビルド用） |
+| ビルド環境 | Docker（ブートファイル用）、`gcc-arm-linux-gnueabi` + `libssl-dev`（チューナーバイナリのビルド用）。mirakc 本体は `bin-armv7/` 同梱のためクロスビルド不要 |
 | ACAS マスターキー | 64 文字の hex |
 
 ---
@@ -58,11 +64,11 @@ Part 3: 起動・確認
 VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen in Container」すると、
 [.devcontainer/Dockerfile](.devcontainer/Dockerfile) からビルド環境が構築されます。主な内容:
 
-- `gcc-arm-linux-gnueabi` + `libssl-dev` — `make build-bins`（ARM32 バイナリのクロスコンパイル）
+- `gcc-arm-linux-gnueabi` + `libssl-dev` — `make build-bins`（ARM32 チューナーバイナリのクロスコンパイル）
 - `binwalk` + `cpio` — `kernel.img` から initramfs cpio を展開（[Step 0](#step-0-kernelimg-を入手して展開する)）
 - `adb` — デバイスとのバイナリ転送・android-libs 取得
 - `python3-pycryptodome` — `make_usb_boot.py`（`bootargs.bin` / RSA 鍵生成）
-- `nodejs` / `npm` / `git` / `curl` — Mirakurun-BS4K のクローン・ビルド・デプロイ
+- `git` / `curl` — mirakc バイナリ（`bin-armv7/`）の配置や、任意の再ビルド時のクローン
 - **docker-in-docker** feature — `build_initramfs.sh` / `make_usb_boot.py` がコンテナ内で `docker run` を使うため有効化済み
 
 > 以降の手順に出てくる `sudo apt install ...`（`gcc-arm-linux-gnueabi`・`libssl-dev`・`binwalk` 等）は、
@@ -87,27 +93,45 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   ├── patch_init.py                init バイナリパッチスクリプト（SELinux bypass 等）
 │   ├── build_initramfs.sh           initramfs_patched.uimg ビルドスクリプト
 │   └── initramfs_overlay/           initramfs オーバーレイファイル
-├── bin/                             ビルドしたバイナリの出力先（make build-bins で生成）
+│       └── start_mirakc.sh          mirakc 自動起動スクリプト（電源 ON 時に実行される版）
+├── bin/                             ビルドしたチューナーバイナリの出力先（make build-bins で生成）
+├── bin-armv7/                       mirakc 本体のプリビルド ARMv7 (glibc) バイナリ
+│   ├── mirakc                       mirakc 本体（yuchi0531/mirakc-BS4K fork）
+│   ├── mirakc-arib                  GR / BS / CS(2K) 用フィルタ・ジョブ
+│   ├── mirakc-arib-tlv              BS4K / BS8K (TLV) 用ジョブ
+│   └── SHA256SUMS                   上記バイナリのチェックサム
 ├── include/openssl/                 b61dec ビルド用 OpenSSL 設定ヘッダ
-├── patches/                         デプロイ時に適用するパッチ（@node-rs/crc32 の JS シム）
 ├── scripts/
-│   ├── smb400-tuner.sh              Mirakurun チューナーコマンドラッパー
-│   ├── start_mirakurun.sh           Mirakurun 起動スクリプト（手動実行用）
+│   ├── smb400-tuner.sh              mirakc チューナーコマンドラッパー
+│   ├── start_mirakc.sh              mirakc 起動スクリプト（chroot + glibc ランタイム）
 │   ├── stop_android_tv.sh           Android TV 不要プロセス停止
 │   ├── crash_guard.sh               クラッシュ監視ウォッチドッグ
-│   └── setup_proot.sh               Alpine + Node.js 初回セットアップ
+│   ├── setup_proot.sh               Alpine rootfs + glibc-armhf 初回セットアップ
+│   └── build_mirakc_armv7.sh        mirakc バイナリ再ビルドスクリプト（任意・上級者向け）
 ├── config/
-│   ├── tuners.yml                   Mirakurun チューナー設定
-│   ├── channels.yml                 BS / BS4K / BS8K チャンネル一覧
-│   └── server.yml                   Mirakurun サーバー設定
+│   ├── config.yml                   mirakc 設定（server / channels / tuners / filters / jobs）
+│   └── strings.yml                  mirakc 日本語文字列定義
 └── src/                             バイナリの C ソースコード（make build-bins でビルド）
     ├── b61dec.c                     ACAS BS4K / BS8K デスクランブラー（ARIB STD-B61 / AES）
-    ├── b21dec.c                     地上波 / BS MULTI2 デスクランブラー（ACAS 経由 / ARIB STD-B25）
+    ├── b21dec.c                     地上波 / BS / CS MULTI2 デスクランブラー（ACAS 経由 / ARIB STD-B25）
     ├── tuner-stream-ng.c            地上波（ISDB-T, MPEG-TS）チューナー
-    ├── tuner-stream-bs-ng.c         BS4K / BS8K（ISDB-S3）チューナー
+    ├── tuner-stream-bs-ng.c         BS4K / BS8K / BS / CS（ISDB-S/S3）チューナー
     ├── tuner-stream-bs.c            BS（ISDB-S, MPEG-TS）チューナー（mode=1）
     └── startup.c                    Android PIE 用 _start エントリポイント
 ```
+
+### デバイス上のレイアウト
+
+| パス | 内容 |
+|------|------|
+| `/data/local/tmp/mirakc/bin/` | mirakc / mirakc-arib / mirakc-arib-tlv |
+| `/data/local/tmp/mirakc/` | `config.yml` / `strings.yml` |
+| `/data/local/tmp/mirakc/epg/` | EPG キャッシュ |
+| `/data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/` | glibc ランタイム（`make setup-runtime` で配備） |
+| `/data/local/tmp/mirakc-root/` | Alpine rootfs |
+| `/data/local/tmp/mirakc.log` | ログ |
+| `/data/local/tmp/mirakc-start.pid` | pidfile |
+| `/data/local/tmp/start_mirakc.sh` | 起動スクリプト（`make start` から実行） |
 
 ---
 
@@ -237,15 +261,46 @@ adb -s <デバイスのIPアドレス>:5555 shell id
 
 ---
 
-## Part 2: Mirakurun のセットアップ
+## Part 2: mirakc のセットアップ
 
-> セットアップ以降は USB メモリを挿入して電源を入れるだけで、`mirakurun_proxy` サービスが起動時に Mirakurun を自動起動します（`make start` は不要）。
+> セットアップ以降は USB メモリを挿入して電源を入れるだけで、`mirakc_proxy` サービスが起動時に mirakc を自動起動します（`make start` は不要）。
 > ただし、安全のためクラッシュ時の自動再起動はしません。
 > 停止した場合は `make start` か再起動で復帰してください。
 
 ---
 
-### Step 4: Alpine Linux + Node.js をセットアップする
+### Step 4: チューナーバイナリをビルドする
+
+`src/` の C ソースからチューナー/デスクランブラバイナリ（`tuner-stream-ng` / `tuner-stream-bs-ng` / `b61dec` / `tuner-stream-bs` / `b21dec`）をビルドします。
+リンクには実機の Android システムライブラリが必要なため、`make build-bins` が ADB 経由で自動取得します（デバイスが USB ブート中であること）。
+
+```sh
+# 要件: sudo apt install gcc-arm-linux-gnueabi libssl-dev
+make build-bins ADB_TARGET=<デバイスのIPアドレス>:5555
+```
+
+> mirakc 本体（`mirakc` / `mirakc-arib` / `mirakc-arib-tlv`）はこのターゲットではビルドされません。
+> `bin-armv7/` のプリビルドをそのまま使います（Step 5）。
+
+---
+
+### Step 5: mirakc バイナリを用意する（通常は何もしなくてよい）
+
+ARMv7 (glibc) 版の mirakc 3バイナリはリポジトリの `bin-armv7/` にコミット済みです。**通常はこのまま `make deploy-mirakc` でデプロイするだけで、クロスビルド環境は不要**です。
+
+自分でバイナリを再生成したい場合のみ、Linux x86_64 ホストで以下を実行します（任意・上級者向け）:
+
+```sh
+# 前提: rustup/cargo + armv7-unknown-linux-gnueabihf target、
+#       gcc-arm-linux-gnueabihf / g++-arm-linux-gnueabihf、cmake、ninja、git
+make build-mirakc-armv7       # = bash scripts/build_mirakc_armv7.sh
+```
+
+スクリプトは [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K)（SIGTERM 対応コミット固定）、[yuchi0531/mirakc-arib-tlv](https://github.com/yuchi0531/mirakc-arib-tlv)（v0.1.0）、[mirakc/mirakc-arib](https://github.com/mirakc/mirakc-arib)（v0.24.37 相当）を `tmp/mirakc-cross-build/` に clone してクロスビルドし、`bin-armv7/` を更新します。
+
+---
+
+### Step 6: Alpine Linux + glibc ランタイムをセットアップする
 
 デバイスにインターネット接続が必要です。コマンドはリポジトリのルートで実行します。
 
@@ -253,70 +308,40 @@ adb -s <デバイスのIPアドレス>:5555 shell id
 make setup-runtime ADB_TARGET=<デバイスのIPアドレス>:5555
 ```
 
-Alpine ARM32 minirootfs のダウンロードと Node.js のインストールを自動で行います。
-完了まで 3〜5 分かかります。
+Alpine ARM32 minirootfs のダウンロードと、mirakc が要求する **glibc (armhf) ランタイム**（`/data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/`）の配備を自動で行います。
+完了まで 3〜5 分かかります。**Node.js は不要になりました**（mirakc は静的リンクに近い Rust バイナリで、Alpine の musl ではなく同梱の glibc ランタイムを `LD_LIBRARY_PATH` 経由で使います）。
 
-完了確認:
+完了確認（rootfs が展開されていること）:
 
 ```sh
 adb -s <デバイスのIPアドレス>:5555 shell \
-  "chroot /data/local/tmp/mirakurun-root /bin/sh -c \
-   'export PATH=/usr/sbin:/usr/bin:/sbin:/bin; node --version'"
-# → v20.x.x などが返ること
+  "ls /data/local/tmp/mirakc-root/bin/sh /data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/ld-linux-armhf.so.3"
+# → 両方のパスが表示されること
 ```
 
 ---
 
-### Step 5: Mirakurun をデプロイする
+### Step 7: mirakc をデプロイする
 
-PC 側で Mirakurun をビルドしてからデバイスに転送します。
+PC 側でビルドした（または `bin-armv7/` 同梱の）mirakc バイナリと設定ファイルをデバイスへ転送します。
 
 ```sh
-# リポジトリのルートに tmp/ を作ってクローン・ビルド
-git clone https://github.com/tsuyopon123/Mirakurun-BS4K.git tmp/Mirakurun-BS4K
-cd tmp/Mirakurun-BS4K && npm install && npm run build && cd ../..
-
-# デバイスにデプロイ
-make deploy-mirakurun ADB_TARGET=<デバイスのIPアドレス>:5555
+make deploy-mirakc ADB_TARGET=<デバイスのIPアドレス>:5555
 ```
 
-Mirakurun のコードと設定ファイルがデバイスの `/data/local/tmp/mirakurun/` にコピーされます。
+以下がデバイスにコピーされます:
+
+- `bin-armv7/mirakc` / `mirakc-arib` / `mirakc-arib-tlv` → `/data/local/tmp/mirakc/bin/`
+- `config/config.yml` → `/data/local/tmp/mirakc/config.yml`
+- `config/strings.yml` → `/data/local/tmp/mirakc/strings.yml`
+
+mirakc の設定は `config/config.yml` です（`server.addrs` は `0.0.0.0:40772`、EPG キャッシュは `/data/local/tmp/mirakc/epg`）。`config/strings.yml` は `config.yml` の `resource.strings-yaml` から参照されます。
+
+> 設定やスクリプトを更新した場合は `make push-all` だけ再実行します（チューナーバイナリ + mirakc バイナリ + スクリプト + 設定を一括更新）。
 
 ---
 
-### Step 6: バイナリをビルドしてデプロイする
-
-**6-1. バイナリをビルドする**
-
-`src/` の C ソースからバイナリ（`tuner-stream-bs-ng` / `b61dec` / `tuner-stream-bs` / `b21dec`）をビルドします。
-リンクには実機の Android システムライブラリが必要なため、 `make build-bins` が ADB 経由で自動取得します（デバイスが USB ブート中であること）。
-
-```sh
-# 要件: sudo apt install gcc-arm-linux-gnueabi libssl-dev
-make build-bins ADB_TARGET=<デバイスのIPアドレス>:5555
-```
-
-**6-2. バイナリ・スクリプト・設定をデプロイする**
-
-```sh
-make push-all ADB_TARGET=<デバイスのIPアドレス>:5555
-```
-
-以下をデバイスにコピーします:
-- `bin/tuner-stream-ng` — 地上波（ISDB-T）チューナー
-- `bin/tuner-stream-bs-ng` — BS4K / BS8K チューナー
-- `bin/b61dec` — BS4K / BS8K デスクランブラー（ACAS / AES）
-- `bin/tuner-stream-bs` — BS チューナー（旧バイナリ。現在未使用・フォールバック保持）
-- `bin/b21dec` — 地上波 / BS デスクランブラー（ACAS 経由 / MULTI2）
-- `scripts/*.sh` — 各種スクリプト
-- `config/*.yml` — Mirakurun 設定
-
-> 設定やスクリプトを更新した場合は `make push-all` だけ再実行します。
-> バイナリ自体を変更した場合は `make build-bins` から実行します。
-
----
-
-### Step 7: ACAS マスターキーを設定する
+### Step 8: ACAS マスターキーを設定する
 
 BS4K デスクランブルには ACAS マスターキー（64 文字 hex）が必要です。
 
@@ -335,21 +360,26 @@ wc -c /data/local/tmp/.acas_key
 
 ## Part 3: 起動・確認
 
-### Step 8: Mirakurun を起動する
+### Step 9: mirakc を起動する
 
 ```sh
 make start ADB_TARGET=<デバイスのIPアドレス>:5555
 ```
 
-正常起動時:
+正常起動時（`/api/version` の応答）:
 
 ```
-{"current":"4.0.0-...","latest":"..."}
+{"current":"4.0.0-dev.0","latest":"4.0.0-dev.0"}
 ```
+
+> `make start` は `/data/local/tmp/start_mirakc.sh` を `setsid` で起動し、`/api/version` を ~60 秒ポーリングします。
+> mirakc は `server.addrs` の `0.0.0.0:40772` で待ち受けます。
 
 ---
 
-### Step 9: BS4K ストリームを確認する
+### Step 10: ストリームを確認する
+
+**BS4K:**
 
 ```sh
 make test ADB_TARGET=<デバイスのIPアドレス>:5555
@@ -363,12 +393,47 @@ Streaming BS4K 45168 for 5s...
 ```
 
 - `7f 02 ...` または `7f 03 ...` → **正常**（IPv4 / IPv6 TLV コンテンツ）
-- `7f ff 00 00 ...` → 未復号（b61dec の ACAS 認証失敗）→ Step 7 を確認
+- `7f ff 00 00 ...` → 未復号（b61dec の ACAS 認証失敗）→ Step 8 を確認
 - 出力なし → チューナーが応答していない → `make log` でログを確認
+
+**CS (2K):**
+
+```sh
+make test-cs ADB_TARGET=<デバイスのIPアドレス>:5555
+```
+
+- 先頭が `47`（TS 同期バイト）なら受信成功。復号可否は ACAS 契約・EMM 状態に依存します。
+
+---
+
+### Step 11: 自動起動を有効にする（initramfs 再ビルド）
+
+USB メモリを挿入して電源 ON するだけで `mirakc_proxy` サービスが mirakc を自動起動するようにするには、initramfs を再ビルドして USB メモリの `initramfs_patched.uimg` を更新します。
+
+```sh
+bash boot/build_initramfs.sh /path/to/_kernel.img.extracted/988000
+```
+
+- `boot/initramfs_overlay/start_mirakc.sh` が `/data/local/tmp/start_mirakc.sh` として配備され、起動時に実行されます。
+- **rootfs 名が `mirakurun-root` → `mirakc-root` に変わったため、既存環境は要再セットアップ**です（`make setup-runtime` → `make deploy-mirakc` を再実行してください）。
+- 詳細は [BOOT.md](BOOT.md) を参照。
+
+---
+
+## API
+
+mirakc は Mirakurun 互換の REST API を提供します（`/api/version`・`/api/channels`・`/api/services` 等）。
+
+```sh
+# バージョン確認
+curl -s http://<デバイスのIPアドレス>:40772/api/version
+```
+
+EPGStation をセットアップする際の `mirakurunPath` は `http://<デバイスのIPアドレス>:40772/` を指定してください。
 
 ### BS8Kの受信について
 
-BS8K（左旋・ISDB-S3）にも対応しています。`config/channels.yml` には次のエントリが含まれています。
+BS8K（左旋・ISDB-S3）にも対応しています。`config/config.yml` には次のエントリが含まれています。
 
 | name | type | channel | serviceId |
 |------|------|---------|-----------|
@@ -397,11 +462,11 @@ ffplay http://<デバイスのIPアドレス>:40772/api/channels/BS4K/45280/stre
 
 地上波デジタル（ISDB-T）にも対応しています。
 地デジも BS と同じ **MULTI2**（B-CAS 方式, CA_system_id 0x0005）でスクランブルされているため、`smb400-tuner.sh` 内の **`b21dec`** がオンデバイス ACAS チップ経由でそのまま解除します（B-CAS カード不要）。
-チューナーは `tuner-stream-ng`（DMX 直接キャプチャ）を使い、`tuner-stream-ng | b21dec` を chroot 配下で実行して平文 MPEG-TS を出力します（Mirakurun 標準 TSFilter で処理）。
+チューナーは `tuner-stream-ng`（DMX 直接キャプチャ）を使い、`tuner-stream-ng | b21dec` を chroot 配下で実行して平文 MPEG-TS を出力します（mirakc の `service-filter` / `program-filter`（mirakc-arib）で処理）。
 
-`config/channels.yml` の GR 一覧は **関東（東京）の物理チャンネル例**です。
+`config/config.yml` の GR 一覧は **関東（東京）の物理チャンネル例**です。
 物理チャンネル割り当ては地域で異なるため、お住まいの地域に合わせて `channel`（13〜62）を変更してください。
-`serviceId` は省略してあり、Mirakurun のサービススキャンが各局を自動登録します。
+`services` は省略してあり、mirakc のサービススキャン（`scan-services` ジョブ）が各局を自動登録します。
 
 | name | type | channel(物理) |
 |------|------|---------------|
@@ -428,7 +493,7 @@ NHK BS などの**BS（ISDB-S, MPEG-TS）**にも対応しています。
 2K BS は ARIB STD-B25 系の **MULTI2**（B-CAS 方式, CA_system_id 0x0005）でスクランブルされており、`smb400-tuner.sh` 内の **`b21dec`** がオンデバイスの **ACAS チップ**経由で解除します（B-CAS カード不要）。
 BS4K の `b61dec`（ACAS-RMP / AES）とは別系統で、ACAS チップの**従来 CAS 機能**（APDU を ACAS モード P2=0x02 で送出）を使い、ECM から MULTI2 スクランブル鍵を取得します。
 
-`config/channels.yml` には例として NHK BS（BS15 / IF 1318000kHz / tsId 16625）が含まれます。
+`config/config.yml` には例として NHK BS（BS15 / IF 1318000kHz / tsId 16625）が含まれます。
 
 | name | type | channel | serviceId |
 |------|------|---------|-----------|
@@ -439,7 +504,7 @@ BS4K の `b61dec`（ACAS-RMP / AES）とは別系統で、ACAS チップの**従
 - channel は `BSxx_y`（xx=トランスポンダ番号, y=ストリーム）形式で、`smb400-tuner.sh` が IF = `1049480 + (xx-1)/2 × 38360` kHz を算出して `tuner-stream-bs-ng`（mode=1）でロックします（旧 `tuner-stream-bs` バイナリは現在未使用・フォールバック保持）。
 - `b21dec` は **ACAS マスターキー不要**です（放送局のワークキー Kw は、過去の実放送受信時に EMM 経由でチップへ書き込まれた契約情報を利用するため）。
   逆に、当該局の契約・受信履歴が無いチップでは ECM 応答が「視聴不可」となり復号できません。
-- 出力は平文 MPEG-TS なので Mirakurun の標準 TSFilter で処理されます（`tlvDecoder` 不要）。
+- 出力は平文 MPEG-TS なので mirakc の `service-filter` / `program-filter`（mirakc-arib）で処理されます。
 - ストリーム確認・視聴:
 
 ```sh
@@ -448,14 +513,14 @@ ffprobe nhkbs.ts          # mpeg2video 1440x1080 + aac が見えれば復号成�
 ffplay  "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/stream"
 ```
 
-110 度 CS（ISDB-S 2K 相当）も BS と同じ経路（`tuner-stream-bs-ng` mode=1 → `b21dec`）で受信します。`config/channels.yml` にはスキャン用のプレースホルダが含まれます（`make test-cs` が CS/ND02 を叩きます）。
+110 度 CS（ISDB-S 2K 相当）も BS と同じ経路（`tuner-stream-bs-ng` mode=1 → `b21dec`）で受信します。`config/config.yml` にはスキャン用のプレースホルダが含まれます（`make test-cs` が CS/ND02 を叩きます）。
 
 | name | type | channel |
 |------|------|---------|
 | CS ND02 | CS | ND02 |
 
 > 2K BS は受信できるトランスポンダ・サービスが地域/契約により異なります。
-> `config/tuners.yml` で `BS` タイプが有効になっている必要があります（本リポジトリでは有効化済み）。
+> `config/config.yml` の `tuners[].types` で `BS` タイプが有効になっている必要があります（本リポジトリでは有効化済み）。
 
 ### ffplay でリアルタイム視聴
 
@@ -477,7 +542,7 @@ EPGStation をセットアップする際に `mirakurunPath` を `http://<デバ
 
 ## サービス登録と EPG について
 
-初回起動後、Mirakurun は `channels.yml` で `serviceId` を指定した各チャンネルを順次チューニングしてサービスを自動登録します。
+初回起動後、mirakc は `config.yml` の `channels` を順次チューニングし、`scan-services` ジョブでサービスを自動登録します。
 **全チャンネルが揃うまで数分**かかります（1 チューナーで順番にチューニングするため）。
 
 ```sh
@@ -485,24 +550,40 @@ EPGStation をセットアップする際に `mirakurunPath` を `http://<デバ
 curl -s http://<デバイスのIPアドレス>:40772/api/services | python3 -m json.tool
 ```
 
-- サービスが登録されると、それを対象に **EPG Gatherer / Service Updater** が動き出します（登録サービスが 0 件のうちは、これらのジョブは対象が無いため即終了します）。
+- サービスが登録されると、mirakc の EPG ジョブ（`update-schedules` / `sync-clocks` 等）が動き出します。ジョブは既定スケジュールで実行されます（`scan-services`: 08:01 / 20:01、`sync-clocks`: 08:11 / 20:11、`update-schedules`: 08:21 / 20:21）。
 - トランスポンダの初回チューニング時、ウォームアップで稀にサービスを取り逃すことがあります（ストリーム先頭の `7f ff`）。
-  その場合は `make start` で再起動すれば取得されます（登録済みサービスは DB から復元されるため再チューニングされません）。
+  その場合は `make start` で再起動すれば取得されます。
 
-> **再起動について**: Web UI の Restart ボタンはこの構成（pm2／Docker なし）では使えず 500 を返します。
-> 再起動はホストから `make restart` を使ってください。
+> **再起動について**: 再起動はホストから `make restart` を使ってください。
+> `make stop` は mirakc に SIGTERM を送り、mirakc は猶予 2 秒でチューナー子プロセス（`smb400-tuner.sh` / `tuner-stream-*` / `b21dec` / `b61dec`）を掃除してから終了します。
+
+---
+
+## mirakc の制約・注意
+
+- **BS4K / BS8K は passthrough（ストリーム中継）のみ**です。program-level stream（`/api/programs/<id>/stream` 等）・録画・タイムシフトには対応しません。BS4K の視聴・録画は EPGStation 等のクライアント側で行ってください。
+- GR / BS / CS(2K) は `mirakc-arib` のフィルタ（`filter-service` / `filter-program`）で処理します。BS4K / BS8K 用のジョブ（`scan-services-tlv` / `collect-mh-eits`）は `mirakc-arib-tlv` が担当します。
+- チューナーは実質 1 台です。視聴と EPG ジョブ（`update-schedules` 等）はチューナーを奪い合うため、時間帯によってはストリーム開始が待たされたり、EPG 取得が失敗することがあります。
+- EPG ジョブは `config.yml` の既定スケジュール（08:01 / 20:01 等）で動きます。録画予約の更新タイミングに注意してください。
+- ACAS 契約が必要なチャンネルは、契約・EMM 状態がチップに無いと復号できません（`make test` で `7f ff` になる場合は Step 8 と契約を確認）。
+- mirakc は停止時に SIGTERM → 猶予 2 秒 → SIGKILL の順でチューナー子プロセスを終了させます（`smb400-tuner.sh` の trap がチューナーを解放します）。`make stop` はこの猶予を待ってから後続処理を行います。
 
 ---
 
 ## コマンド
 
 ```sh
-make start    # Mirakurun 起動
-make stop     # 停止（チューナー・デスクランブラーも含む）
-make restart  # 再起動
-make log      # ログ確認（最新 50 行）
-make test     # BS4K 疎通テスト
-make push-all # バイナリ・スクリプト・設定を更新
+make build-bins          # チューナー/デコーダバイナリをビルド
+make build-mirakc-armv7  # mirakc 3バイナリを ARMv7 向けに再ビルド（任意）
+make deploy-mirakc       # mirakc 本体・設定をデプロイ
+make setup-runtime       # Alpine rootfs + glibc ランタイムを構築
+make push-all            # チューナーバイナリ・mirakc バイナリ・スクリプト・設定を更新
+make start               # mirakc 起動
+make stop                # 停止（チューナー・デスクランブラーも含む）
+make restart             # 再起動
+make log                 # ログ確認（最新 50 行）
+make test                # BS4K 疎通テスト
+make test-cs             # CS ND02 疎通テスト
 
 # デバイスの IP アドレスを指定する場合
 make start ADB_TARGET=192.168.1.100:5555
@@ -517,7 +598,7 @@ make start ADB_TARGET=192.168.1.100:5555
 OEM チューナーサービス（`pix_airtuner`）が起動中は ACAS を占有するため、
 `b61dec` が失敗します（`GetCkc failed: -4`）。
 
-`start_mirakurun.sh` は起動時に自動で停止します。
+`start_mirakc.sh` は起動時に自動で停止します。
 再起動後に OEM サービスが復帰した場合は手動で停止:
 
 ```sh
@@ -530,9 +611,7 @@ adb -s <デバイスのIPアドレス>:5555 shell "stop pix_airtuner; stop airtu
 
 - `crash_dump32` フォーク爆弾（Android 8 のクラッシュダンプ暴走）
 - MemAvailable < 600 MB → `stop_android_tv.sh` で Android TV アプリを回収（2 分クールダウン）
-- MemAvailable < 350 MB → Node.js を強制終了（最終手段）
-
-Node.js のヒープは `--max-old-space-size=256` で制限されています。
+- MemAvailable < 350 MB → mirakc を強制終了（最終手段）
 
 ### USB Boot ファイルのビルド
 
@@ -544,7 +623,7 @@ Node.js のヒープは `--max-old-space-size=256` で制限されています�
 ## トラブルシューティング
 
 ```sh
-# ログ確認
+# ログ確認（mirakc.log）
 make log ADB_TARGET=<デバイスのIPアドレス>:5555
 
 # crash_guard ログ
@@ -553,3 +632,39 @@ adb -s <デバイスのIPアドレス>:5555 shell "tail -20 /data/local/tmp/cras
 # メモリ確認
 adb -s <デバイスのIPアドレス>:5555 shell "grep MemAvailable /proc/meminfo"
 ```
+
+### mirakc が起動しない
+
+`start_mirakc.sh` は事前チェック（preflight）で必要なファイルが揃っていない場合は**何も起動せずに終了**します。ログに以下が出ていないか確認してください:
+
+```sh
+make log ADB_TARGET=<デバイスのIPアドレス>:5555
+# [mirakc] not starting — missing file(s): ...
+```
+
+不足しているファイルに応じて `make deploy-mirakc`（mirakc バイナリ・設定）や `make push-scripts`（スクリプト）を再実行してください。
+
+### glibc ローダーが見つからない
+
+mirakc / mirakc-arib / mirakc-arib-tlv は glibc (armhf) に動的リンクされています。以下のようなエラーが出る場合:
+
+```
+cannot execute: required file not found
+/.../mirakc: error while loading shared libraries: ld-linux-armhf.so.3: cannot open shared object file
+```
+
+glibc ランタイムが未配備です。`make setup-runtime` を実行してください。配備先は `/data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/` で、`start_mirakc.sh` が chroot 内で `LD_LIBRARY_PATH` を設定します。
+
+### BS4K が無映像・無出力
+
+- `make test` の先頭が `7f ff ...` → 未復号。ACAS マスターキー（Step 8）と契約を確認。
+- OEM チューナーサービスが ACAS を占有している → 上記「OEM サービスと ACAS 競合」を参照。
+- 出力なし → チューナーが応答していない。`make log` を確認し、`make restart` を試す。
+- BS4K/BS8K は passthrough のみのため、クライアント側も mmt/tlv 対応 FFmpeg や BS4K 対応 EPGStation が必要です。
+
+### その他（USB ブート・ADB）
+
+- ログ確認: `make log ADB_TARGET=<デバイスのIPアドレス>:5555`
+- crash_guard ログ: `adb -s <デバイスのIPアドレス>:5555 shell "tail -20 /data/local/tmp/crash_guard.log"`
+- メモリ確認: `adb -s <デバイスのIPアドレス>:5555 shell "grep MemAvailable /proc/meminfo"`
+- ADB で `uid=2000(shell)` と表示される場合は eMMC 通常ブートです（USB ブートを再確認）。詳細は [BOOT.md](BOOT.md) を参照。

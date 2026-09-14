@@ -1,12 +1,18 @@
-# SMB400 Mirakurun-BS4K — デプロイ & 運用 Makefile
+# SMB400 mirakc — デプロイ & 運用 Makefile
 #
 # 前提: デバイスが USB ブートで起動し ADB ルート取得済みであること。
-# 初回のみ: Alpine + Node.js セットアップ (setup-runtime) と
-#            Mirakurun JS デプロイ (deploy-mirakurun) が必要。
+# 初回のみ: Alpine + glibc ランタイムセットアップ (setup-runtime) と
+#            mirakc デプロイ (deploy-mirakc) が必要。
+#
+# mirakc 本体のバイナリは bin-armv7/ にプリビルド同梱（ビルド不要で push 可能）。
+# 再ビルドしたい場合のみ make build-mirakc-armv7。
+#
+# 設定: config/config.yml, config/strings.yml
+# API : http://<device>:40772 (Mirakurun 互換)
 #
 # 典型的な操作:
 #   make push-all           バイナリ・スクリプト・設定を一括更新
-#   make start              Mirakurun 起動
+#   make start              mirakc 起動
 #   make stop               停止
 #   make log                ログ確認
 #   make test               BS4K ストリーム疎通確認
@@ -14,23 +20,23 @@
 # ---------- 変更可能な設定 ----------
 # ADB_TARGET 未指定時は adb devices から自動検出
 # 複数台接続時は明示指定: make <target> ADB_TARGET=192.168.1.126:5555
+# ADB を使わないターゲット (help, build-mirakc-armv7) は ADB なしでも実行できる。
 ifndef ADB_TARGET
-  _DETECTED := $(shell adb devices 2>/dev/null | awk '/\tdevice$$/{print $$1}')
-  ifeq ($(words $(_DETECTED)),0)
-    $(error No ADB device connected. Run: adb connect <ip>:<port>)
-  else ifneq ($(words $(_DETECTED)),1)
-    $(error Multiple ADB devices detected: $(_DETECTED) — set ADB_TARGET=<device>)
-  else
-    ADB_TARGET := $(_DETECTED)
+  ifeq ($(filter help build-mirakc-armv7,$(MAKECMDGOALS)),)
+    _DETECTED := $(shell adb devices 2>/dev/null | awk '/\tdevice$$/{print $$1}')
+    ifeq ($(words $(_DETECTED)),0)
+      $(error No ADB device connected. Run: adb connect <ip>:<port>)
+    else ifneq ($(words $(_DETECTED)),1)
+      $(error Multiple ADB devices detected: $(_DETECTED) — set ADB_TARGET=<device>)
+    else
+      ADB_TARGET := $(_DETECTED)
+    endif
   endif
 endif
 ADB        := adb -s $(ADB_TARGET)
 DEVICE_IP  := $(firstword $(subst :, ,$(ADB_TARGET)))
 DEVICE_TMP := /data/local/tmp
-MIRAKURUN  := $(DEVICE_TMP)/mirakurun
-
-# Mirakurun-BS4K JS ソース（初回デプロイ時のみ使用）
-MIRAKURUN_SRC ?= tmp/Mirakurun-BS4K
+MIRAKC_DIR := $(DEVICE_TMP)/mirakc
 
 # バイナリビルド設定
 # 要件: gcc-arm-linux-gnueabi（sudo apt install gcc-arm-linux-gnueabi）
@@ -47,9 +53,9 @@ CFLAGS_ARM   := -march=armv7-a -mfloat-abi=softfp -mfpu=vfpv3 \
                 -L$(ANDROID_LIBS) -Wl,-rpath-link,$(ANDROID_LIBS)
 # ------------------------------------
 
-.PHONY: build-bins android-libs \
+.PHONY: build-bins build-mirakc-armv7 android-libs \
         push-all push-bins push-scripts push-config \
-        deploy-mirakurun setup-runtime \
+        deploy-mirakc setup-runtime \
         start stop restart log test test-cs help
 
 # ---- ビルド (src/ → bin/) ----
@@ -66,6 +72,8 @@ android-libs:
 	done
 
 # src/ から bin/ のバイナリ（tuner-stream-ng, tuner-stream-bs-ng, b61dec, tuner-stream-bs, b21dec）をビルド
+# mirakc 本体 (mirakc / mirakc-arib / mirakc-arib-tlv) はここではビルドしない:
+# bin-armv7/ のプリビルドをそのまま使う（再ビルドは build-mirakc-armv7）。
 build-bins: android-libs
 	@mkdir -p bin
 	@echo "[*] Building tuner-stream-ng (GR/ISDB-T)..."
@@ -98,62 +106,77 @@ build-bins: android-libs
 	    -o bin/b21dec
 	@echo "[+] Built bin/tuner-stream-ng, tuner-stream-bs-ng, b61dec, tuner-stream-bs, b21dec"
 
+# 任意・上級者向け: mirakc / mirakc-arib / mirakc-arib-tlv を ARMv7 (glibc) 向けに再ビルド。
+# Linux x86_64 ホストに rustup + arm-linux-gnueabihf クロスツールチェーン等が必要
+# （詳細は scripts/build_mirakc_armv7.sh の冒頭コメント）。
+# 通常は不要（bin-armv7/ にプリビルド同梱）。
+build-mirakc-armv7:
+	bash scripts/build_mirakc_armv7.sh
+
 # ---- デプロイ ----
 
+# チューナー/デコーダバイナリを $(DEVICE_TMP)/ へ、
+# mirakc 3バイナリを $(MIRAKC_DIR)/bin/ へ push
 push-bins:
-	@echo "[*] Pushing binaries..."
+	@echo "[*] Pushing tuner/decoder binaries..."
 	$(ADB) push bin/tuner-stream-ng    $(DEVICE_TMP)/tuner-stream-ng
 	$(ADB) push bin/tuner-stream-bs-ng $(DEVICE_TMP)/tuner-stream-bs-ng
 	$(ADB) push bin/b61dec             $(DEVICE_TMP)/b61dec
 	$(ADB) push bin/tuner-stream-bs    $(DEVICE_TMP)/tuner-stream-bs
 	$(ADB) push bin/b21dec             $(DEVICE_TMP)/b21dec
+	@echo "[*] Pushing mirakc binaries..."
+	$(ADB) shell mkdir -p $(MIRAKC_DIR)/bin
+	$(ADB) push bin-armv7/mirakc          $(MIRAKC_DIR)/bin/mirakc
+	$(ADB) push bin-armv7/mirakc-arib     $(MIRAKC_DIR)/bin/mirakc-arib
+	$(ADB) push bin-armv7/mirakc-arib-tlv $(MIRAKC_DIR)/bin/mirakc-arib-tlv
 	$(ADB) shell chmod +x \
 	    $(DEVICE_TMP)/tuner-stream-ng \
 	    $(DEVICE_TMP)/tuner-stream-bs-ng \
 	    $(DEVICE_TMP)/b61dec \
 	    $(DEVICE_TMP)/tuner-stream-bs \
-	    $(DEVICE_TMP)/b21dec
+	    $(DEVICE_TMP)/b21dec \
+	    $(MIRAKC_DIR)/bin/mirakc \
+	    $(MIRAKC_DIR)/bin/mirakc-arib \
+	    $(MIRAKC_DIR)/bin/mirakc-arib-tlv
 
 push-scripts:
 	@echo "[*] Pushing scripts..."
 	$(ADB) push scripts/smb400-tuner.sh    $(DEVICE_TMP)/smb400-tuner.sh
-	$(ADB) push scripts/start_mirakurun.sh $(DEVICE_TMP)/start_mirakurun.sh
+	$(ADB) push scripts/start_mirakc.sh    $(DEVICE_TMP)/start_mirakc.sh
 	$(ADB) push scripts/stop_android_tv.sh $(DEVICE_TMP)/stop_android_tv.sh
 	$(ADB) push scripts/crash_guard.sh     $(DEVICE_TMP)/crash_guard.sh
 	$(ADB) shell chmod +x \
 	    $(DEVICE_TMP)/smb400-tuner.sh \
-	    $(DEVICE_TMP)/start_mirakurun.sh \
+	    $(DEVICE_TMP)/start_mirakc.sh \
 	    $(DEVICE_TMP)/stop_android_tv.sh \
 	    $(DEVICE_TMP)/crash_guard.sh
 
 push-config:
 	@echo "[*] Pushing config..."
-	$(ADB) shell mkdir -p $(MIRAKURUN)/config
-	$(ADB) push config/tuners.yml   $(MIRAKURUN)/config/tuners.yml
-	$(ADB) push config/channels.yml $(MIRAKURUN)/config/channels.yml
-	$(ADB) push config/server.yml   $(MIRAKURUN)/config/server.yml
+	$(ADB) shell mkdir -p $(MIRAKC_DIR)/epg
+	$(ADB) push config/config.yml  $(MIRAKC_DIR)/config.yml
+	$(ADB) push config/strings.yml $(MIRAKC_DIR)/strings.yml
 
 push-all: push-bins push-scripts push-config
-	@echo "[+] Done. Run 'make start' to launch Mirakurun."
+	@echo "[+] Done. Run 'make start' to launch mirakc."
 
-# 初回のみ: Mirakurun-BS4K JS ファイル一式をデプロイ
-# $(MIRAKURUN_SRC) を GitHub からクローンしてビルド済みであること。
-deploy-mirakurun:
-	@echo "[*] Deploying Mirakurun JS to device..."
-	$(ADB) shell mkdir -p $(MIRAKURUN)/config $(MIRAKURUN)/db $(MIRAKURUN)/logo-data
-	$(ADB) push $(MIRAKURUN_SRC)/lib/          $(MIRAKURUN)/lib/
-	$(ADB) push $(MIRAKURUN_SRC)/node_modules/ $(MIRAKURUN)/node_modules/
-	$(ADB) push $(MIRAKURUN_SRC)/package.json  $(MIRAKURUN)/package.json
-	$(ADB) push $(MIRAKURUN_SRC)/api.yml       $(MIRAKURUN)/api.yml
-	@echo "[*] Applying @node-rs/crc32 JS shim (no musl-arm native build)..."
-	$(ADB) push patches/node-rs-crc32-index.js \
-	    $(MIRAKURUN)/node_modules/@node-rs/crc32/index.js
-	$(ADB) push config/tuners.yml   $(MIRAKURUN)/config/tuners.yml
-	$(ADB) push config/channels.yml $(MIRAKURUN)/config/channels.yml
-	$(ADB) push config/server.yml   $(MIRAKURUN)/config/server.yml
-	@echo "[+] Mirakurun JS deployed."
+# 初回のみ: mirakc 本体・設定をデバイスへデプロイ。
+# バイナリは bin-armv7/ のプリビルドを使用（make build-mirakc-armv7 で再生成可能）。
+deploy-mirakc:
+	@echo "[*] Deploying mirakc to device..."
+	$(ADB) shell mkdir -p $(MIRAKC_DIR)/bin $(MIRAKC_DIR)/epg
+	$(ADB) push config/config.yml  $(MIRAKC_DIR)/config.yml
+	$(ADB) push config/strings.yml $(MIRAKC_DIR)/strings.yml
+	$(ADB) push bin-armv7/mirakc          $(MIRAKC_DIR)/bin/mirakc
+	$(ADB) push bin-armv7/mirakc-arib     $(MIRAKC_DIR)/bin/mirakc-arib
+	$(ADB) push bin-armv7/mirakc-arib-tlv $(MIRAKC_DIR)/bin/mirakc-arib-tlv
+	$(ADB) shell chmod +x \
+	    $(MIRAKC_DIR)/bin/mirakc \
+	    $(MIRAKC_DIR)/bin/mirakc-arib \
+	    $(MIRAKC_DIR)/bin/mirakc-arib-tlv
+	@echo "[+] mirakc deployed."
 
-# 初回のみ: Alpine ARM32 + Node.js をデバイスに構築（インターネット接続必要）
+# 初回のみ: Alpine rootfs + glibc (armhf) ランタイムをデバイスに構築（インターネット接続必要）
 setup-runtime:
 	bash scripts/setup_proot.sh $(ADB_TARGET)
 
@@ -161,35 +184,42 @@ setup-runtime:
 
 start:
 	@echo "[*] Stopping any existing session..."
-	-$(ADB) shell "pkill -9 Mirakurun 2>/dev/null; \
-	    kill -9 \$$(pgrep -f 'start_mirakurun[.]sh' 2>/dev/null) 2>/dev/null; \
-	    pkill -9 b61dec 2>/dev/null; pkill -9 tunertest 2>/dev/null; true"
-	@sleep 2
-	@echo "[*] Starting Mirakurun..."
-	$(ADB) shell "setsid sh $(DEVICE_TMP)/start_mirakurun.sh \
-	    >> $(DEVICE_TMP)/mirakurun.log 2>&1 &"
+	-$(ADB) shell "pkill -TERM mirakc 2>/dev/null; \
+	    sleep 3; \
+	    pkill -9 mirakc 2>/dev/null; \
+	    kill -9 \$$(pgrep -f 'start_mirakc[.]sh' 2>/dev/null) 2>/dev/null; \
+	    pkill -9 b61dec 2>/dev/null; pkill -9 b21dec 2>/dev/null; \
+	    pkill -9 tunertest 2>/dev/null; \
+	    pkill -9 -f tuner-stream 2>/dev/null; true"
+	@sleep 1
+	@echo "[*] Starting mirakc..."
+	$(ADB) shell "setsid sh $(DEVICE_TMP)/start_mirakc.sh \
+	    >> $(DEVICE_TMP)/mirakc.log 2>&1 &"
 	@echo "[*] 起動を待っています（最大 ~60 秒）..."
 	@ok=0; for i in $$(seq 1 30); do \
 	    if curl -s --max-time 5 http://$(DEVICE_IP):40772/api/version >/dev/null 2>&1; then ok=1; break; fi; \
 	    sleep 2; \
 	done; \
 	if [ $$ok = 1 ]; then \
-	    printf "[+] Mirakurun is up: "; curl -s --max-time 5 http://$(DEVICE_IP):40772/api/version; echo; \
+	    printf "[+] mirakc is up: "; curl -s --max-time 5 http://$(DEVICE_IP):40772/api/version; echo; \
 	else \
 	    echo "(まだ応答がありません — 'make log' で確認してください)"; \
 	fi
 
 stop:
-	-$(ADB) shell "pkill -9 Mirakurun 2>/dev/null; \
-	    kill -9 \$$(pgrep -f 'start_mirakurun[.]sh' 2>/dev/null) 2>/dev/null; \
-	    pkill -9 -f 'node.*server\.js' 2>/dev/null; \
+	-$(ADB) shell "pkill -TERM mirakc 2>/dev/null; \
+	    sleep 3; \
+	    pkill -9 mirakc 2>/dev/null; \
+	    kill -9 \$$(pgrep -f 'start_mirakc[.]sh' 2>/dev/null) 2>/dev/null; \
 	    pkill -9 b61dec 2>/dev/null; \
 	    pkill -9 b21dec 2>/dev/null; \
 	    pkill -9 tunertest 2>/dev/null; \
 	    pkill -9 -f tuner-stream 2>/dev/null; \
+	    pkill -9 -f crash_guard.sh 2>/dev/null; \
+	    rm -f $(DEVICE_TMP)/crash_guard.pid; \
 	    sleep 1; true"
 	-$(ADB) shell " \
-	    grep mirakurun-root /proc/mounts | while read d mp r; do echo \"\$$mp\"; done | sort -r | \
+	    grep mirakc-root /proc/mounts | while read d mp r; do echo \"\$$mp\"; done | sort -r | \
 	    while read mp; do umount \"\$$mp\" 2>/dev/null || true; done; true"
 	@echo "Stopped."
 
@@ -198,7 +228,7 @@ restart: stop start
 # ---- 確認 ----
 
 log:
-	$(ADB) shell "tail -50 $(DEVICE_TMP)/mirakurun.log"
+	$(ADB) shell "tail -50 $(DEVICE_TMP)/mirakc.log"
 
 # BS4K 45168 から 5 秒受信して先頭バイトを表示
 # 正常: 7f 02 ... または 7f 03 ... (IPv4/IPv6 TLV コンテンツ)
@@ -219,23 +249,24 @@ test-cs:
 
 help:
 	@echo ""
-	@echo "SMB400 Mirakurun-BS4K デプロイ Makefile"
+	@echo "SMB400 mirakc デプロイ Makefile"
 	@echo ""
-	@echo "  make build-bins        src/ から bin/ のバイナリをビルド (初回のみ)"
-	@echo "  make android-libs      デバイスから Android システムライブラリを取得"
-	@echo "  make push-all          バイナリ・スクリプト・設定を一括デプロイ"
-	@echo "  make push-bins         バイナリのみ (5バイナリ: tuner-stream-ng, tuner-stream-bs-ng, b61dec, tuner-stream-bs, b21dec)"
-	@echo "  make push-scripts      スクリプトのみ (smb400-tuner.sh 等)"
-	@echo "  make push-config       設定ファイルのみ (channels.yml 等)"
-	@echo "  make deploy-mirakurun  Mirakurun JS 一式をデプロイ (初回のみ)"
-	@echo "  make setup-runtime     Alpine + Node.js をデバイスに構築 (初回のみ)"
-	@echo "  make start             Mirakurun 起動"
-	@echo "  make stop              Mirakurun 停止"
-	@echo "  make restart           再起動"
-	@echo "  make log               ログ確認 (tail -50)"
-	@echo "  make test              BS4K ストリーム疎通テスト"
-	@echo "  make test-cs           CS ND02 ストリーム疎通テスト (実機・契約依存)"
+	@echo "  make build-bins          src/ からチューナー/デコーダバイナリをビルド (初回のみ)"
+	@echo "  make android-libs        デバイスから Android システムライブラリを取得"
+	@echo "  make build-mirakc-armv7  mirakc 3バイナリを ARMv7 向けに再ビルド (任意・上級者向け)"
+	@echo "  make push-all            バイナリ・スクリプト・設定を一括デプロイ"
+	@echo "  make push-bins           バイナリのみ (チューナー5種 + mirakc 3種)"
+	@echo "  make push-scripts        スクリプトのみ (smb400-tuner.sh 等)"
+	@echo "  make push-config         設定のみ (config.yml / strings.yml)"
+	@echo "  make deploy-mirakc       mirakc 本体・設定をデプロイ (初回のみ)"
+	@echo "  make setup-runtime       Alpine rootfs + glibc ランタイムを構築 (初回のみ)"
+	@echo "  make start               mirakc 起動"
+	@echo "  make stop                mirakc 停止"
+	@echo "  make restart             再起動"
+	@echo "  make log                 ログ確認 (tail -50)"
+	@echo "  make test                BS4K ストリーム疎通テスト"
+	@echo "  make test-cs             CS ND02 ストリーム疎通テスト (実機・契約依存)"
 	@echo ""
-	@echo "デフォルト接続先: $(ADB_TARGET)"
+	@echo "デフォルト接続先: $(if $(ADB_TARGET),$(ADB_TARGET),(未検出 — ADB 接続が必要))"
 	@echo "変更: make start ADB_TARGET=192.168.1.100:5555"
 	@echo ""

@@ -1,5 +1,5 @@
 #!/bin/bash
-# setup_proot.sh — one-time setup of Alpine Linux ARM + Node.js on SMB400.
+# setup_proot.sh — one-time setup of Alpine Linux ARM + glibc runtime on SMB400.
 #
 # Run from the development host (requires ADB connection to device):
 #   make setup-runtime ADB_TARGET=<device-ip>:5555
@@ -7,9 +7,17 @@
 # What this does:
 #   1. Downloads the Alpine Linux ARM minimal rootfs
 #   2. Pushes it to /data/local/tmp/ on the device and extracts it
-#   3. chroots into the rootfs (adb is root) and installs Node.js + npm via apk
+#   3. Prepares the chroot skeleton (DNS, /var/run, /run)
+#   4. Downloads the real glibc armhf runtime (libc6 / libgcc-s1 / libstdc++6)
+#      from Ubuntu ports and deploys it to /data/local/tmp/glibc-armhf
+#   5. Verifies the glibc loader and runs mirakc --version (best effort)
 #
-# The runtime (start_mirakurun.sh) also uses chroot, so no proot is needed.
+# Why glibc: mirakc / mirakc-arib / mirakc-arib-tlv are armv7 glibc (hard-float)
+# binaries (GLIBC_2.39 / GLIBCXX_3.4.32) — Alpine's musl + gcompat cannot run
+# them. They are launched via the loader bundled in /data/local/tmp/glibc-armhf
+# (see start_mirakc.sh).
+#
+# The runtime (start_mirakc.sh) also uses chroot, so no proot is needed.
 
 set -euo pipefail
 
@@ -21,7 +29,9 @@ else
 fi
 
 DEVICE_TMP=/data/local/tmp
-ROOTFS_DIR="$DEVICE_TMP/mirakurun-root"
+ROOTFS_DIR="$DEVICE_TMP/mirakc-root"
+GLIBC_DIR_DEVICE="$DEVICE_TMP/glibc-armhf"
+GLIBC_LIB_DEVICE="$GLIBC_DIR_DEVICE/usr/lib/arm-linux-gnueabihf"
 WORK_DIR=$(mktemp -d)
 trap "rm -rf '$WORK_DIR'" EXIT
 
@@ -41,25 +51,105 @@ $ADB push "$WORK_DIR/alpine-rootfs.tar" "$DEVICE_TMP/alpine-rootfs.tar"
 $ADB shell "cd '$ROOTFS_DIR' && tar xf '$DEVICE_TMP/alpine-rootfs.tar'"
 $ADB shell "rm '$DEVICE_TMP/alpine-rootfs.tar'"
 
-echo "=== Step 3: Configure Alpine DNS ==="
+echo "=== Step 3: Configure Alpine DNS and runtime dirs ==="
 $ADB shell "echo 'nameserver 8.8.8.8' > '$ROOTFS_DIR/etc/resolv.conf'"
+# Alpine's /var/run is normally a symlink to /run; make both real directories
+# so the init.pixboot.rc mkdir lines and mirakc never depend on a dangling link.
+$ADB shell "rm -f '$ROOTFS_DIR/var/run'; mkdir -p '$ROOTFS_DIR/var/run' '$ROOTFS_DIR/run'"
 
-echo "=== Step 4: Install Node.js + npm inside chroot ==="
-# adb runs as root, so we chroot directly (same mechanism as the runtime).
-# proc + /dev are needed for apk (TLS uses /dev/urandom).
-$ADB shell '
-set -e
-ROOTFS=/data/local/tmp/mirakurun-root
-mount -t proc proc "$ROOTFS/proc" 2>/dev/null || true
-mount -o bind /dev "$ROOTFS/dev"  2>/dev/null || true
-chroot "$ROOTFS" /bin/sh -c "export PATH=/usr/sbin:/usr/bin:/sbin:/bin; apk update && apk add nodejs npm"
-RC=$?
-umount "$ROOTFS/dev"  2>/dev/null || true
-umount "$ROOTFS/proc" 2>/dev/null || true
-exit $RC
-'
+echo "=== Step 4: Deploy real glibc armhf runtime ==="
+# Idempotent: skip the download/push when the loader is already on the device.
+# (Compare output because adb shell does not always propagate remote exit codes.)
+glibc_present=$($ADB shell "[ -f '$GLIBC_LIB_DEVICE/ld-linux-armhf.so.3' ] && echo yes || echo no" | tr -d '\r')
+if [ "$glibc_present" = "yes" ]; then
+    echo "[=] glibc runtime already on device — skipping download/push."
+else
+    GLIBC_DIR="$WORK_DIR/glibc-armhf"
+    mkdir -p "$GLIBC_DIR"
+
+    # Ubuntu ports suite used for the armhf libraries. mirakc needs GLIBC_2.39+
+    # and mirakc-arib needs libstdc++ with GLIBCXX_3.4.32. On Ubuntu hosts use
+    # the running release; otherwise (e.g. the Debian devcontainer) fall back to
+    # an Ubuntu LTS suite that provides both. Override with UBUNTU_SUITE=<name>.
+    UBUNTU_SUITE="${UBUNTU_SUITE:-}"
+    if [ -z "$UBUNTU_SUITE" ]; then
+        if command -v lsb_release >/dev/null 2>&1 && lsb_release -is 2>/dev/null | grep -qi ubuntu; then
+            UBUNTU_SUITE=$(lsb_release -cs)
+        else
+            UBUNTU_SUITE=noble
+        fi
+    fi
+    echo "[*] Ubuntu ports suite: $UBUNTU_SUITE"
+
+    # Dedicated apt state under WORK_DIR so no root / global apt config is touched.
+    # NOTE: the file must use the classic .list name — apt >= 3.x parses *.sources
+    # as deb822 format and rejects the one-line `deb [...] ...` syntax.
+    APT_OPTS="-o Dir::Etc::sourcelist=$WORK_DIR/armhf.list \
+              -o Dir::Etc::sourceparts=/dev/null \
+              -o Dir::State::Lists=$WORK_DIR/armhf-lists \
+              -o Dir::Cache=$WORK_DIR/armhf-cache \
+              -o Debug::NoLocking=1 \
+              -o APT::Architecture=armhf -o APT::Architectures=armhf"
+    mkdir -p "$WORK_DIR/armhf-lists/partial" "$WORK_DIR/armhf-cache/archives/partial"
+    echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports $UBUNTU_SUITE main" \
+        > "$WORK_DIR/armhf.list"
+
+    GLIBC_PKGS="libc6:armhf libgcc-s1:armhf libstdc++6:armhf"
+    # libstdc++6 is required by mirakc-arib (GLIBCXX_3.4.32).
+    # shellcheck disable=SC2086
+    if ! apt-get $APT_OPTS update >/dev/null 2>&1; then
+        # Most common cause on a non-Ubuntu host: the Ubuntu archive keyring is
+        # not installed. Retry unauthenticated so the download still works.
+        echo "[!] apt-get update failed — retrying with AllowInsecureRepositories"
+        # shellcheck disable=SC2086
+        APT_OPTS="$APT_OPTS -o Acquire::AllowInsecureRepositories=true \
+                             -o APT::Get::AllowUnauthenticated=true"
+        # shellcheck disable=SC2086
+        apt-get $APT_OPTS update 2>&1 | tail -1
+    fi
+    # shellcheck disable=SC2086
+    if ! (cd "$WORK_DIR" && apt-get $APT_OPTS download $GLIBC_PKGS 2>&1 | tail -2); then
+        echo "[*] apt-get download failed — falling back to --print-uris + curl..."
+        # Same three packages, but fetched directly from the ports mirror.
+        # Output format: '<uri>' <filename> <size> <hash>
+        # shellcheck disable=SC2086
+        apt-get $APT_OPTS --print-uris download $GLIBC_PKGS 2>/dev/null \
+            | sed -n "s/^'\(http[^']*\)'[[:space:]]\+\([^[:space:]]*\.deb\).*/\1 \2/p" \
+            > "$WORK_DIR/glibc-uris.txt"
+        while read -r uri fname; do
+            echo "    curl $fname"
+            curl -fL -o "$WORK_DIR/$fname" "$uri"
+        done < "$WORK_DIR/glibc-uris.txt"
+    fi
+
+    # Extract each package; fail loudly instead of passing a stray glob to dpkg.
+    for pkg in libc6 libgcc-s1 libstdc++6; do
+        deb=$(ls "$WORK_DIR"/${pkg}_*_armhf.deb 2>/dev/null | head -n 1 || true)
+        if [ -z "$deb" ]; then
+            echo "[!] download failed: ${pkg} (armhf) — see messages above"
+            exit 1
+        fi
+        dpkg-deb -x "$deb" "$GLIBC_DIR"
+    done
+
+    echo "[*] Pushing glibc-armhf to device..."
+    # Push the *contents* (trailing /.) into a pre-created target so a previous
+    # partial deploy cannot end up nested as glibc-armhf/glibc-armhf.
+    $ADB shell mkdir -p "$GLIBC_DIR_DEVICE"
+    $ADB push "$GLIBC_DIR/." "$GLIBC_DIR_DEVICE/"
+fi
 
 echo ""
 echo "=== Setup complete ==="
-echo "Node.js version:"
-$ADB shell "chroot '$ROOTFS_DIR' /bin/sh -c 'export PATH=/usr/sbin:/usr/bin:/sbin:/bin; node --version'"
+echo "glibc runtime on device:"
+$ADB shell "ls -l '$GLIBC_LIB_DEVICE/' | head"
+
+echo "mirakc startup test (best effort — needs 'make deploy-mirakc' first):"
+# /data/local/tmp is bind-mounted into the rootfs so the chroot sees the glibc
+# runtime and the mirakc binaries. The explicit loader is used because the
+# /lib/ld-linux-armhf.so.3 symlink is created by start_mirakc.sh at launch.
+$ADB shell "mkdir -p '$ROOTFS_DIR/data/local/tmp'; \
+    mount --bind '$DEVICE_TMP' '$ROOTFS_DIR/data/local/tmp' 2>/dev/null || true; \
+    chroot '$ROOTFS_DIR' /bin/sh -c 'LD_LIBRARY_PATH=$GLIBC_LIB_DEVICE $GLIBC_LIB_DEVICE/ld-linux-armhf.so.3 --library-path $GLIBC_LIB_DEVICE $DEVICE_TMP/mirakc/bin/mirakc --version 2>&1 | head -2' || true; \
+    chroot '$ROOTFS_DIR' /bin/sh -c 'LD_LIBRARY_PATH=$GLIBC_LIB_DEVICE $GLIBC_LIB_DEVICE/ld-linux-armhf.so.3 --library-path $GLIBC_LIB_DEVICE $DEVICE_TMP/mirakc/bin/mirakc-arib --version 2>&1 | head -2' || true; \
+    umount '$ROOTFS_DIR/data/local/tmp' 2>/dev/null || true" || true

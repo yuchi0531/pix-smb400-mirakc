@@ -2,7 +2,7 @@
 # init.pixboot.rc: imported before init.bigfish.rc so PIXBOOT services take precedence
 
 on early-init
-    setprop ro.pixboot.version 15
+    setprop ro.pixboot.version 16
     # Enable TCP ADB on 5555 persistently. adbd reads service.adb.tcp.port when it
     # starts, so this must be set *before* `start adbd`. Baked into the initramfs so
     # it survives every USB boot (no manual `adb tcpip 5555` needed after reboot).
@@ -18,17 +18,17 @@ on property:init.svc.logd=restarting
 
 on post-fs-data
     # Deploy scripts from initramfs — always overwrites /data with the latest version.
-    copy /start_proxy.sh     /data/local/tmp/start_proxy.sh
-    chmod 0755 /data/local/tmp/start_proxy.sh
+    copy /start_mirakc.sh    /data/local/tmp/start_mirakc.sh
+    chmod 0755 /data/local/tmp/start_mirakc.sh
     copy /crash_guard.sh     /data/local/tmp/crash_guard.sh
     chmod 0755 /data/local/tmp/crash_guard.sh
     copy /stop_android_tv.sh /data/local/tmp/stop_android_tv.sh
     chmod 0755 /data/local/tmp/stop_android_tv.sh
     copy /smb400_tuner.sh    /data/local/tmp/smb400-tuner.sh
     chmod 0755 /data/local/tmp/smb400-tuner.sh
-    # Ensure /run and /var/run exist in Alpine rootfs so Node.js can bind the socket
-    mkdir /data/local/tmp/mirakurun-root/run 0755 root root
-    mkdir /data/local/tmp/mirakurun-root/var/run 0755 root root
+    # Ensure /run and /var/run exist in Alpine rootfs so mirakc can bind the socket
+    mkdir /data/local/tmp/mirakc-root/run 0755 root root
+    mkdir /data/local/tmp/mirakc-root/var/run 0755 root root
 
 on boot
     # Start Ethernet DHCP setup (delayed for PHY init)
@@ -54,9 +54,9 @@ service rootconsole /system/bin/sh
     seclabel u:r:su:s0
 
 on property:sys.boot_completed=1
-    start mirakurun_proxy
+    start mirakc_proxy
 
-service mirakurun_proxy /system/bin/sh /data/local/tmp/start_proxy.sh
+service mirakc_proxy /system/bin/sh /data/local/tmp/start_mirakc.sh
     user root
     group root
     disabled

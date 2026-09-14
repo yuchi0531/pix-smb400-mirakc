@@ -32,7 +32,7 @@ _*.extracted/
 firmware_extracted/
 
 # ---- Work dirs ----
-# Mirakurun-BS4K clone built during `make deploy-mirakurun`
+# Cross-build source trees cloned by scripts/build_mirakc_armv7.sh
 /tmp/
 node_modules/
 

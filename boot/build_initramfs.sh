@@ -80,7 +80,7 @@ mkdir -p "$WORK_DIR/initrc"
 cp "$OVERLAY_DIR/initrc/logd.rc"        "$WORK_DIR/initrc/logd.rc"
 
 # デバイス起動時に /data/local/tmp/ に自動デプロイされるスクリプト群
-cp "$OVERLAY_DIR/start_proxy.sh"     "$WORK_DIR/start_proxy.sh"
+cp "$OVERLAY_DIR/start_mirakc.sh"    "$WORK_DIR/start_mirakc.sh"
 cp "$OVERLAY_DIR/crash_guard.sh"     "$WORK_DIR/crash_guard.sh"
 cp "$OVERLAY_DIR/stop_android_tv.sh" "$WORK_DIR/stop_android_tv.sh"
 cp "$OVERLAY_DIR/smb400_tuner.sh"    "$WORK_DIR/smb400_tuner.sh"

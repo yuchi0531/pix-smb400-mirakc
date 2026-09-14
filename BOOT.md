@@ -8,7 +8,7 @@ USB メモリには以下の 3 ファイルが必要です。いずれも `boot/
 |----------|------|----------|
 | `bootargs.bin` | u-boot 環境変数ブロック（`androidboot.selinux=permissive` を注入） | `make_usb_boot.py` |
 | `root_rsa_pub_crc.bin` | 外部 RSA 公開鍵。BootROM がこの鍵で `bootargs.bin` を検証する | `make_usb_boot.py` |
-| `initramfs_patched.uimg` | カスタム initramfs（ADB・DHCP・Mirakurun 自動起動を組み込み） | `build_initramfs.sh` |
+| `initramfs_patched.uimg` | カスタム initramfs（ADB・DHCP・mirakc 自動起動を組み込み） | `build_initramfs.sh` |
 
 ---
 
@@ -70,6 +70,10 @@ sudo umount /mnt/PIXBOOT
 USB メモリを PIX-SMB400 に挿入し、USB Boot ピンをショートして電源を入れます。
 起動・ADB 接続の手順は [README.md](README.md) を参照してください。
 
+セットアップ完了後（`make setup-runtime` + `make deploy-mirakc` 後）は、この initramfs の
+`mirakc_proxy` サービスが起動時に **mirakc** を自動起動します（rootfs は `/data/local/tmp/mirakc-root`）。
+`make start` は不要です。
+
 ---
 
 # 技術ドキュメント
@@ -124,7 +128,7 @@ boot/
     ├── dhclient.conf               DHCP クライアント設定
     ├── init.pixboot.rc             PIX-SMB400 専用 init サービス定義
     ├── init_pix_netdbg.sh          Ethernet DHCP セットアップ（PHY 初期化待ち含む）
-    ├── start_proxy.sh              デバイス起動時に /data/local/tmp/ へ自動デプロイ
+    ├── start_mirakc.sh             mirakc 起動スクリプト（起動時に /data/local/tmp/ へ自動デプロイ）
     ├── crash_guard.sh              同上
     ├── stop_android_tv.sh          同上
     ├── smb400_tuner.sh             同上
@@ -228,7 +232,7 @@ ls -lh boot/initramfs_patched.uimg
 | ファイル | 用途 |
 |----------|------|
 | `init.pixboot.rc` | 起動時サービス定義。自動起動タイミングや追加コマンドを変更 |
-| `start_proxy.sh` | Mirakurun 自動起動スクリプト（電源 ON 時に実行される版） |
+| `start_mirakc.sh` | mirakc 自動起動スクリプト（電源 ON 時に実行される版） |
 | `smb400_tuner.sh` | チューナー制御スクリプト |
 | `default.prop` | デバッグプロパティ（変更不要） |
 

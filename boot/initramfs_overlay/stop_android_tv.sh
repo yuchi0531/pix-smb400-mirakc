@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # stop_android_tv.sh — free memory by stopping unused Android TV components.
 #
-# Called automatically by start_mirakurun.sh.
+# Called automatically by start_mirakc.sh.
 # Safe to run multiple times (idempotent).
 #
 # What is stopped:
@@ -19,7 +19,7 @@
 #   - teecd/keymaster/keystore  : TEE / secure storage (used by some HALs)
 #   - vold/healthd              : storage + battery monitoring
 
-LOG=${LOG:-/data/local/tmp/mirakurun.log}
+LOG=${LOG:-/data/local/tmp/mirakc.log}
 _log() { echo "[stop_atv] $*" >> "$LOG"; }
 
 _mem() { grep MemAvailable /proc/meminfo | tr -dc '0-9'; }
