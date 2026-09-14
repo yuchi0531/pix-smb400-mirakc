@@ -36,6 +36,21 @@ PATCH_SCRIPT="$SCRIPT_DIR/patch_init.py"
 WORK_DIR="${WORK_DIR:-/tmp/smb400_initramfs_work}"
 OUT="$SCRIPT_DIR/initramfs_patched.uimg"
 
+# --- 0. tuner スクリプト同期チェック (再発防止) ---
+# scripts/smb400-tuner.sh が正本。boot/initramfs_overlay/smb400_tuner.sh は
+# ファイル名の -/_ 違いのみで内容は同一に保つこと。不一致なら中断する。
+CANONICAL_TUNER_SH="$SCRIPT_DIR/../scripts/smb400-tuner.sh"
+OVERLAY_TUNER_SH="$OVERLAY_DIR/smb400_tuner.sh"
+if [ -f "$CANONICAL_TUNER_SH" ] && [ -f "$OVERLAY_TUNER_SH" ]; then
+    if ! diff -q "$CANONICAL_TUNER_SH" "$OVERLAY_TUNER_SH" >/dev/null; then
+        echo "[!] 不一致: scripts/smb400-tuner.sh と boot/initramfs_overlay/smb400_tuner.sh が異なります"
+        echo "    先に同期してください: cp scripts/smb400-tuner.sh boot/initramfs_overlay/smb400_tuner.sh"
+        diff -u "$CANONICAL_TUNER_SH" "$OVERLAY_TUNER_SH" | head -n 50 || true
+        exit 1
+    fi
+    echo "[+] tuner スクリプト同期OK"
+fi
+
 echo "[*] Work dir: $WORK_DIR"
 echo "[*] CPIO src: $CPIO_SRC"
 echo "[*] Overlay:  $OVERLAY_DIR"

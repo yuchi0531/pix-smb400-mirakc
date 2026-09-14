@@ -1,11 +1,12 @@
-# SMB400 channel list — GR / BS / BS4K
+# SMB400 channel list — GR / BS / CS / BS4K
 # smb400-tuner.sh derives IF frequency and mode from the channel value alone。
 # Channels 45280 と 45745 removed — signal absent on this device。
 #
 # serviceId: BS4K はサービススキャン対象外のため、サービス登録には serviceId の
 #            明示が必須。channel はチューナへ渡すストリームID、serviceId は SDT 上の
-#            実サービスID（別物。実機の SDT から確認した値）。GR/BS(2K) は標準の
-#            サービススキャンが効くため serviceId 省略でも自動登録される。
+#            実サービスID（別物。実機の SDT から確認した値）。GR/BS/CS(2K) は標準の
+#            サービススキャンが効くため serviceId 省略でも自動登録される
+#            （CS も MPEG-TS/TSFilter のためスキャン可）。
 
 # --- GR (ISDB-T 地上波) ---
 # 地デジも MULTI2(B-CAS) スクランブルのため smb400-tuner.sh 内の b21dec で解除する。
@@ -200,6 +201,68 @@
   type: BS
   channel: 'BS23_3'
   serviceId: 260
+
+# --- CS (110度CS, ISDB-S 2K相当) ---
+# MULTI2 スクランブルを smb400-tuner.sh 内の b21dec が ACAS チップ経由で解除し、
+# 平文 MPEG-TS を出力（Mirakurun 標準 TSFilter で処理）。
+# channel=ND02〜ND24（偶数のみ）。1トランスポンダ=単一TS(MPTS)のため
+# BS のような TSID 表は不要（smb400-tuner.sh が NDxx から IF を直接算出）。
+# serviceId の実測値は hotarun 側 .111 機の実波 SDT 由来（全国共通の固定値）。
+# sid なしはサービススキャン用のプレースホルダ（make test-cs が CS/ND02 を叩く）。
+- name: 'CS ND02'
+  type: CS
+  channel: 'ND02'
+- name: 'CS ND04'
+  type: CS
+  channel: 'ND04'
+- name: 'CS ND06'
+  type: CS
+  channel: 'ND06'
+- name: 'CS ND08'
+  type: CS
+  channel: 'ND08'
+- name: 'CS ND10'
+  type: CS
+  channel: 'ND10'
+- name: 'CS ND12'
+  type: CS
+  channel: 'ND12'
+- name: 'CS ND14'
+  type: CS
+  channel: 'ND14'
+- name: 'CS ND16'
+  type: CS
+  channel: 'ND16'
+- name: 'CS ND18'
+  type: CS
+  channel: 'ND18'
+- name: 'CS ND20'
+  type: CS
+  channel: 'ND20'
+- name: 'CS ND22'
+  type: CS
+  channel: 'ND22'
+- name: 'CS ND24'
+  type: CS
+  channel: 'ND24'
+
+# 有料局（未契約のため無効。契約があれば有効化可）
+# - name: 'テレ朝チャンネル1'
+#   type: CS
+#   channel: 'ND02'
+#   serviceId: 298
+# - name: 'テレ朝チャンネル2'
+#   type: CS
+#   channel: 'ND02'
+#   serviceId: 299
+# - name: 'AT-X'
+#   type: CS
+#   channel: 'ND16'
+#   serviceId: 333
+# - name: '日テレプラス'
+#   type: CS
+#   channel: 'ND24'
+#   serviceId: 300
 
 # 有料局（本機は未契約のため rc=0xa103 で復号不可。契約のあるチップなら有効化可）
 # - name: 'WOWOWプライム'

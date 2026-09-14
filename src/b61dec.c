@@ -1,15 +1,15 @@
 /*
  * b61dec.c — ARIB STD-B61 BS4K TLV/MMTP descrambler for PIX-SMB400
  *
- * Reads raw TLV/MMTP stream from stdin (tuner-stream-bs mode=2 output),
+ * Reads raw TLV/MMTP stream from stdin (tuner-stream-bs-ng mode=2 output),
  * descrambles using the on-device ACAS chip via HiSilicon SCI interface,
  * and writes descrambled TLV to stdout.
  *
  * Usage:
- *   tuner-stream-bs 0 2 <freq_kHz> 0 | b61dec -key <64-hex-chars>
+ *   tuner-stream-bs-ng 0 2 <freq_kHz> 0 | b61dec -key <64-hex-chars>
  *
  * For 11.78502 GHz (IF = 11785020 - 10678000 = 1107020 kHz):
- *   tuner-stream-bs 0 2 1107020 0 | b61dec -key <master_key_hex>
+ *   tuner-stream-bs-ng 0 2 1107020 0 | b61dec -key <master_key_hex>
  *
  *   -key  <hex>   32-byte ACAS card master key (64 hex chars, device-specific)
  *   -port <n>     SCI port number (default: 0)
@@ -533,7 +533,7 @@ static void usage(const char *prog) {
         "Reads TLV/MMTP from stdin, writes descrambled TLV to stdout.\n\n"
         "Example (11.84256 GHz = IF 1164560 kHz, BS7):\n"
         "  stop pix_airtuner\n"
-        "  tuner-stream-bs 0 2 1164560 0 | \\\n"
+        "  tuner-stream-bs-ng 0 2 1164560 0 | \\\n"
         "  %s -key ***REMOVED-ACAS-KEY***\n\n"
         "ACAS Master Key (all ARIB STD-B61 receivers):\n"
         "  ***REMOVED-ACAS-KEY***\n\n"

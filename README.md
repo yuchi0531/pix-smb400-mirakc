@@ -306,7 +306,7 @@ make push-all ADB_TARGET=<デバイスのIPアドレス>:5555
 - `bin/tuner-stream-ng` — 地上波（ISDB-T）チューナー
 - `bin/tuner-stream-bs-ng` — BS4K / BS8K チューナー
 - `bin/b61dec` — BS4K / BS8K デスクランブラー（ACAS / AES）
-- `bin/tuner-stream-bs` — BS チューナー（mode=1）
+- `bin/tuner-stream-bs` — BS チューナー（旧バイナリ。現在未使用・フォールバック保持）
 - `bin/b21dec` — 地上波 / BS デスクランブラー（ACAS 経由 / MULTI2）
 - `scripts/*.sh` — 各種スクリプト
 - `config/*.yml` — Mirakurun 設定
@@ -436,7 +436,7 @@ BS4K の `b61dec`（ACAS-RMP / AES）とは別系統で、ACAS チップの**従
 | NHK BS (102) | BS | BS15_0 | 102 |
 | NHK BS (103) | BS | BS15_0 | 103 |
 
-- channel は `BSxx_y`（xx=トランスポンダ番号, y=ストリーム）形式で、`smb400-tuner.sh` が IF = `1049480 + (xx-1)/2 × 38360` kHz を算出して `tuner-stream-bs`（mode=1）でロックします。
+- channel は `BSxx_y`（xx=トランスポンダ番号, y=ストリーム）形式で、`smb400-tuner.sh` が IF = `1049480 + (xx-1)/2 × 38360` kHz を算出して `tuner-stream-bs-ng`（mode=1）でロックします（旧 `tuner-stream-bs` バイナリは現在未使用・フォールバック保持）。
 - `b21dec` は **ACAS マスターキー不要**です（放送局のワークキー Kw は、過去の実放送受信時に EMM 経由でチップへ書き込まれた契約情報を利用するため）。
   逆に、当該局の契約・受信履歴が無いチップでは ECM 応答が「視聴不可」となり復号できません。
 - 出力は平文 MPEG-TS なので Mirakurun の標準 TSFilter で処理されます（`tlvDecoder` 不要）。
@@ -447,6 +447,12 @@ curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/services/
 ffprobe nhkbs.ts          # mpeg2video 1440x1080 + aac が見えれば復号成功
 ffplay  "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/stream"
 ```
+
+110 度 CS（ISDB-S 2K 相当）も BS と同じ経路（`tuner-stream-bs-ng` mode=1 → `b21dec`）で受信します。`config/channels.yml` にはスキャン用のプレースホルダが含まれます（`make test-cs` が CS/ND02 を叩きます）。
+
+| name | type | channel |
+|------|------|---------|
+| CS ND02 | CS | ND02 |
 
 > 2K BS は受信できるトランスポンダ・サービスが地域/契約により異なります。
 > `config/tuners.yml` で `BS` タイプが有効になっている必要があります（本リポジトリでは有効化済み）。

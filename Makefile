@@ -50,7 +50,7 @@ CFLAGS_ARM   := -march=armv7-a -mfloat-abi=softfp -mfpu=vfpv3 \
 .PHONY: build-bins android-libs \
         push-all push-bins push-scripts push-config \
         deploy-mirakurun setup-runtime \
-        start stop restart log test help
+        start stop restart log test test-cs help
 
 # ---- ビルド (src/ → bin/) ----
 
@@ -65,7 +65,7 @@ android-libs:
 	    fi; \
 	done
 
-# src/ から bin/ のバイナリ（tuner-stream-bs-ng, b61dec）をビルド
+# src/ から bin/ のバイナリ（tuner-stream-ng, tuner-stream-bs-ng, b61dec, tuner-stream-bs, b21dec）をビルド
 build-bins: android-libs
 	@mkdir -p bin
 	@echo "[*] Building tuner-stream-ng (GR/ISDB-T)..."
@@ -208,6 +208,13 @@ test:
 	@curl -s --max-time 8 http://$(DEVICE_IP):40772/api/channels/BS4K/45168/stream \
 	    | od -v -t x1 2>/dev/null | head -4
 
+# CS ND02 から 5 秒受信して MPEG-TS の先頭バイトを表示
+# 正常: 47 (TS同期バイト)。復号可否はACAS契約・EMM状態に依存する。
+test-cs:
+	@echo "Streaming CS ND02 for 5s..."
+	@curl -s --max-time 8 http://$(DEVICE_IP):40772/api/channels/CS/ND02/stream \
+	    | od -v -t x1 2>/dev/null | head -4
+
 # ---- ヘルプ ----
 
 help:
@@ -217,7 +224,7 @@ help:
 	@echo "  make build-bins        src/ から bin/ のバイナリをビルド (初回のみ)"
 	@echo "  make android-libs      デバイスから Android システムライブラリを取得"
 	@echo "  make push-all          バイナリ・スクリプト・設定を一括デプロイ"
-	@echo "  make push-bins         バイナリのみ (tuner-stream-bs-ng, b61dec)"
+	@echo "  make push-bins         バイナリのみ (5バイナリ: tuner-stream-ng, tuner-stream-bs-ng, b61dec, tuner-stream-bs, b21dec)"
 	@echo "  make push-scripts      スクリプトのみ (smb400-tuner.sh 等)"
 	@echo "  make push-config       設定ファイルのみ (channels.yml 等)"
 	@echo "  make deploy-mirakurun  Mirakurun JS 一式をデプロイ (初回のみ)"
@@ -227,6 +234,7 @@ help:
 	@echo "  make restart           再起動"
 	@echo "  make log               ログ確認 (tail -50)"
 	@echo "  make test              BS4K ストリーム疎通テスト"
+	@echo "  make test-cs           CS ND02 ストリーム疎通テスト (実機・契約依存)"
 	@echo ""
 	@echo "デフォルト接続先: $(ADB_TARGET)"
 	@echo "変更: make start ADB_TARGET=192.168.1.100:5555"

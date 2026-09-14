@@ -234,6 +234,7 @@ ls -lh boot/initramfs_patched.uimg
 
 これらの `.sh` は起動時に `init.pixboot.rc` によって `/data/local/tmp/` へ自動コピーされます。
 手動デプロイが不要になるため、スクリプトを更新したら initramfs を再ビルドして USB メモリを更新してください。
+> `scripts/` を更新した場合は `boot/initramfs_overlay/` へ同期してから再ビルドしてください(起動毎に `init.pixboot.rc` が `/data/local/tmp/` を上書きするため、`make push-scripts` だけでは起動で戻ります)。
 
 ---
 
@@ -270,3 +271,4 @@ USB メモリを PIX-SMB400 に挿入し、USB Boot ピンをショートして�
 | SELinux が enforcing のまま | init パッチ未適用 | `patch_init.py` が正常終了したか確認 |
 | デバイスの IP アドレスが不明 | DHCP 未取得 | ブート後 30 秒以上待つ / ルーター側で確認 |
 | `[!] unexpected byte` (patch_init.py) | 別バージョンの `init` バイナリ | オフセットの再特定が必要（ARM Thumb2 逆アセンブル） |
+| `0 storage device detected`・USB 未検出 | 新大容量品の相性・フォーマット不良 | 旧小容量 USB2.0(16GB 等)で試行、フルフォーマット後に 3 ファイルを置き直す |
