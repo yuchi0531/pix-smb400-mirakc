@@ -4,8 +4,9 @@
 # 初回のみ: Alpine + glibc ランタイムセットアップ (setup-runtime) と
 #            mirakc デプロイ (deploy-mirakc) が必要。
 #
-# mirakc 本体のバイナリは bin-armv7/ にプリビルド同梱（ビルド不要で push 可能）。
-# 再ビルドしたい場合のみ make build-mirakc-armv7。
+# mirakc 本体のバイナリは GitHub Release (smb400-armv7-v1) から取得する。
+# リポジトリには含まれない。取得は make fetch-mirakc-armv7（デプロイ時に自動実行）。
+# ソースからビルドする場合のみ make build-mirakc-armv7。
 #
 # 設定: config/config.yml, config/strings.yml
 # API : http://<device>:40772 (Mirakurun 互換)
@@ -20,9 +21,9 @@
 # ---------- 変更可能な設定 ----------
 # ADB_TARGET 未指定時は adb devices から自動検出
 # 複数台接続時は明示指定: make <target> ADB_TARGET=192.168.1.126:5555
-# ADB を使わないターゲット (help, build-mirakc-armv7) は ADB なしでも実行できる。
+# ADB を使わないターゲット (help, fetch-mirakc-armv7, build-mirakc-armv7) は ADB なしでも実行できる。
 ifndef ADB_TARGET
-  ifeq ($(filter help build-mirakc-armv7,$(MAKECMDGOALS)),)
+  ifeq ($(filter help fetch-mirakc-armv7 build-mirakc-armv7,$(MAKECMDGOALS)),)
     _DETECTED := $(shell adb devices 2>/dev/null | awk '/\tdevice$$/{print $$1}')
     ifeq ($(words $(_DETECTED)),0)
       $(error No ADB device connected. Run: adb connect <ip>:<port>)
@@ -37,6 +38,9 @@ ADB        := adb -s $(ADB_TARGET)
 DEVICE_IP  := $(firstword $(subst :, ,$(ADB_TARGET)))
 DEVICE_TMP := /data/local/tmp
 MIRAKC_DIR := $(DEVICE_TMP)/mirakc
+
+# mirakc 3バイナリの取得先 (make fetch-mirakc-armv7 / build-mirakc-armv7 が出力)
+MIRAKC_ARM_DIR := tmp/mirakc-armv7
 
 # バイナリビルド設定
 # 要件: gcc-arm-linux-gnueabi（sudo apt install gcc-arm-linux-gnueabi）
@@ -53,7 +57,7 @@ CFLAGS_ARM   := -march=armv7-a -mfloat-abi=softfp -mfpu=vfpv3 \
                 -L$(ANDROID_LIBS) -Wl,-rpath-link,$(ANDROID_LIBS)
 # ------------------------------------
 
-.PHONY: build-bins build-mirakc-armv7 android-libs \
+.PHONY: build-bins fetch-mirakc-armv7 build-mirakc-armv7 android-libs \
         push-all push-bins push-scripts push-config \
         deploy-mirakc setup-runtime \
         start stop restart log test test-cs help
@@ -73,7 +77,7 @@ android-libs:
 
 # src/ から bin/ のバイナリ（tuner-stream-ng, tuner-stream-bs-ng, b61dec, tuner-stream-bs, b21dec）をビルド
 # mirakc 本体 (mirakc / mirakc-arib / mirakc-arib-tlv) はここではビルドしない:
-# bin-armv7/ のプリビルドをそのまま使う（再ビルドは build-mirakc-armv7）。
+# GitHub Release から取得する（fetch-mirakc-armv7）。
 build-bins: android-libs
 	@mkdir -p bin
 	@echo "[*] Building tuner-stream-ng (GR/ISDB-T)..."
@@ -106,10 +110,15 @@ build-bins: android-libs
 	    -o bin/b21dec
 	@echo "[+] Built bin/tuner-stream-ng, tuner-stream-bs-ng, b61dec, tuner-stream-bs, b21dec"
 
+# mirakc 3バイナリを GitHub Release (smb400-armv7-v1) から $(MIRAKC_ARM_DIR)/ へ取得。
+# 冪等: SHA256 検証に合格済みなら再ダウンロードしない（FORCE=1 で強制再取得）。
+fetch-mirakc-armv7:
+	bash scripts/fetch_mirakc_armv7.sh
+
 # 任意・上級者向け: mirakc / mirakc-arib / mirakc-arib-tlv を ARMv7 (glibc) 向けに再ビルド。
 # Linux x86_64 ホストに rustup + arm-linux-gnueabihf クロスツールチェーン等が必要
 # （詳細は scripts/build_mirakc_armv7.sh の冒頭コメント）。
-# 通常は不要（bin-armv7/ にプリビルド同梱）。
+# 通常は不要（fetch-mirakc-armv7 で Release から取得できる）。
 build-mirakc-armv7:
 	bash scripts/build_mirakc_armv7.sh
 
@@ -117,7 +126,8 @@ build-mirakc-armv7:
 
 # チューナー/デコーダバイナリを $(DEVICE_TMP)/ へ、
 # mirakc 3バイナリを $(MIRAKC_DIR)/bin/ へ push
-push-bins:
+# mirakc バイナリは $(MIRAKC_ARM_DIR)/ から（無ければ Release から自動取得）
+push-bins: fetch-mirakc-armv7
 	@echo "[*] Pushing tuner/decoder binaries..."
 	$(ADB) push bin/tuner-stream-ng    $(DEVICE_TMP)/tuner-stream-ng
 	$(ADB) push bin/tuner-stream-bs-ng $(DEVICE_TMP)/tuner-stream-bs-ng
@@ -126,9 +136,9 @@ push-bins:
 	$(ADB) push bin/b21dec             $(DEVICE_TMP)/b21dec
 	@echo "[*] Pushing mirakc binaries..."
 	$(ADB) shell mkdir -p $(MIRAKC_DIR)/bin
-	$(ADB) push bin-armv7/mirakc          $(MIRAKC_DIR)/bin/mirakc
-	$(ADB) push bin-armv7/mirakc-arib     $(MIRAKC_DIR)/bin/mirakc-arib
-	$(ADB) push bin-armv7/mirakc-arib-tlv $(MIRAKC_DIR)/bin/mirakc-arib-tlv
+	$(ADB) push $(MIRAKC_ARM_DIR)/mirakc          $(MIRAKC_DIR)/bin/mirakc
+	$(ADB) push $(MIRAKC_ARM_DIR)/mirakc-arib     $(MIRAKC_DIR)/bin/mirakc-arib
+	$(ADB) push $(MIRAKC_ARM_DIR)/mirakc-arib-tlv $(MIRAKC_DIR)/bin/mirakc-arib-tlv
 	$(ADB) shell chmod +x \
 	    $(DEVICE_TMP)/tuner-stream-ng \
 	    $(DEVICE_TMP)/tuner-stream-bs-ng \
@@ -161,15 +171,15 @@ push-all: push-bins push-scripts push-config
 	@echo "[+] Done. Run 'make start' to launch mirakc."
 
 # 初回のみ: mirakc 本体・設定をデバイスへデプロイ。
-# バイナリは bin-armv7/ のプリビルドを使用（make build-mirakc-armv7 で再生成可能）。
-deploy-mirakc:
+# バイナリは $(MIRAKC_ARM_DIR)/ から（無ければ Release から自動取得）。
+deploy-mirakc: fetch-mirakc-armv7
 	@echo "[*] Deploying mirakc to device..."
 	$(ADB) shell mkdir -p $(MIRAKC_DIR)/bin $(MIRAKC_DIR)/epg
 	$(ADB) push config/config.yml  $(MIRAKC_DIR)/config.yml
 	$(ADB) push config/strings.yml $(MIRAKC_DIR)/strings.yml
-	$(ADB) push bin-armv7/mirakc          $(MIRAKC_DIR)/bin/mirakc
-	$(ADB) push bin-armv7/mirakc-arib     $(MIRAKC_DIR)/bin/mirakc-arib
-	$(ADB) push bin-armv7/mirakc-arib-tlv $(MIRAKC_DIR)/bin/mirakc-arib-tlv
+	$(ADB) push $(MIRAKC_ARM_DIR)/mirakc          $(MIRAKC_DIR)/bin/mirakc
+	$(ADB) push $(MIRAKC_ARM_DIR)/mirakc-arib     $(MIRAKC_DIR)/bin/mirakc-arib
+	$(ADB) push $(MIRAKC_ARM_DIR)/mirakc-arib-tlv $(MIRAKC_DIR)/bin/mirakc-arib-tlv
 	$(ADB) shell chmod +x \
 	    $(MIRAKC_DIR)/bin/mirakc \
 	    $(MIRAKC_DIR)/bin/mirakc-arib \
@@ -253,6 +263,7 @@ help:
 	@echo ""
 	@echo "  make build-bins          src/ からチューナー/デコーダバイナリをビルド (初回のみ)"
 	@echo "  make android-libs        デバイスから Android システムライブラリを取得"
+	@echo "  make fetch-mirakc-armv7  mirakc 3バイナリを GitHub Release から取得"
 	@echo "  make build-mirakc-armv7  mirakc 3バイナリを ARMv7 向けに再ビルド (任意・上級者向け)"
 	@echo "  make push-all            バイナリ・スクリプト・設定を一括デプロイ"
 	@echo "  make push-bins           バイナリのみ (チューナー5種 + mirakc 3種)"

@@ -2,12 +2,12 @@
 # build_mirakc_armv7.sh — mirakc / mirakc-arib / mirakc-arib-tlv を
 # armv7-unknown-linux-gnueabihf (glibc) 向けにクロスビルドするスクリプト。
 #
-# 【通常は不要】 bin-armv7/ にプリビルド済みバイナリを同梱しているため、
-# デプロイだけならこのスクリプトの実行は不要です。
-# バイナリを再生成したい場合のみ実行してください。
+# 【通常は不要】 デプロイ用バイナリは GitHub Release (smb400-armv7-v1) から
+# `make fetch-mirakc-armv7` で取得できます。
+# バイナリを自分で生成したい場合のみ実行してください。
 #
 # 使い方 (リポジトリのルートで実行):
-#   bash scripts/build_mirakc_armv7.sh
+#   bash scripts/build_mirakc_armv7.sh   # = make build-mirakc-armv7
 #
 # 前提 (Linux x86_64 ホスト):
 #   - rustup / cargo
@@ -18,10 +18,10 @@
 #   - cmake, ninja, git
 #
 # 成果物:
-#   bin-armv7/mirakc
-#   bin-armv7/mirakc-arib
-#   bin-armv7/mirakc-arib-tlv
-#   bin-armv7/SHA256SUMS (更新)
+#   tmp/mirakc-armv7/mirakc
+#   tmp/mirakc-armv7/mirakc-arib
+#   tmp/mirakc-armv7/mirakc-arib-tlv
+#   tmp/mirakc-armv7/SHA256SUMS (更新)
 #
 # ソースツリーは WORK_DIR (既定: tmp/mirakc-cross-build) に clone されます。
 # clone 済みなら再利用するため再実行可能です。
@@ -30,7 +30,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK_DIR="${WORK_DIR:-$REPO_ROOT/tmp/mirakc-cross-build}"
-OUT_DIR="$REPO_ROOT/bin-armv7"
+OUT_DIR="$REPO_ROOT/tmp/mirakc-armv7"
 TARGET=armv7-unknown-linux-gnueabihf
 
 MIRAKC_REPO="${MIRAKC_REPO:-https://github.com/yuchi0531/mirakc-BS4K.git}"
@@ -135,7 +135,7 @@ git -C "$ARIB_SRC" submodule update --init --recursive
 )
 
 # -------------------------------------------------------------------- 配置
-step "bin-armv7/ へコピー + strip + SHA256SUMS 更新"
+step "tmp/mirakc-armv7/ へコピー + strip + SHA256SUMS 更新"
 
 cp "$MIRAKC_SRC/target/$TARGET/release/mirakc"                    "$OUT_DIR/mirakc"
 cp "$TLV_SRC/target/$TARGET/release/mirakc-arib-tlv"              "$OUT_DIR/mirakc-arib-tlv"
@@ -147,13 +147,12 @@ arm-linux-gnueabihf-strip "$OUT_DIR/mirakc" \
 chmod +x "$OUT_DIR/mirakc" "$OUT_DIR/mirakc-arib" "$OUT_DIR/mirakc-arib-tlv"
 
 (
-    cd "$REPO_ROOT"
-    sha256sum bin-armv7/mirakc bin-armv7/mirakc-arib bin-armv7/mirakc-arib-tlv \
-        > bin-armv7/SHA256SUMS
+    cd "$OUT_DIR"
+    sha256sum mirakc mirakc-arib mirakc-arib-tlv > SHA256SUMS
 )
 
 file "$OUT_DIR/mirakc" "$OUT_DIR/mirakc-arib" "$OUT_DIR/mirakc-arib-tlv"
 cat "$OUT_DIR/SHA256SUMS"
 
 echo ""
-echo "[+] 完了: bin-armv7/ の3バイナリを更新しました。"
+echo "[+] 完了: tmp/mirakc-armv7/ の3バイナリを更新しました。"

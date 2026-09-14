@@ -2,7 +2,7 @@
 
 PIX-SMB400（HiSilicon Hi3798CV200 搭載 Android TV）上で [mirakc](https://github.com/mirakc/mirakc)（Rust 製 Mirakurun 互換 PVR バックエンド）を実行し、地上波（ISDB-T）・BS（ISDB-S）・BS4K / BS8K（ISDB-S3）を受信するためのプロジェクトです。
 
-本リポジトリは BS4K / BS8K の **TLV passthrough 対応** を追加した [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K) フォークを使用します。ARMv7 (glibc) 版の mirakc バイナリを `bin-armv7/` に同梱しているため、クロスビルド環境なしでもデプロイできます。
+本リポジトリは BS4K / BS8K の **TLV passthrough 対応** を追加した [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K) フォークを使用します。ARMv7 (glibc) 版の mirakc バイナリは [smb400-armv7-v1 リリース](https://github.com/yuchi0531/mirakc-BS4K/releases/tag/smb400-armv7-v1) から `make fetch-mirakc-armv7` で取得するため、クロスビルド環境なしでもデプロイできます（リポジトリにはバイナリを含みません）。自分でビルドする場合は `make build-mirakc-armv7`。
 
 > 以前は Mirakurun（Node.js）を Alpine + chroot で動かす構成でしたが、現在は mirakc（Rust, glibc ARMv7）に移行しています。
 
@@ -32,7 +32,7 @@ Part 1: USB ブートで root を取る
 
 Part 2: mirakc のセットアップ
   Step 4  チューナーバイナリをビルドする（make build-bins）
-  Step 5  mirakc バイナリを用意する（bin-armv7/ 同梱・再ビルドは任意）
+  Step 5  mirakc バイナリを用意する（Release から fetch・再ビルドは任意）
   Step 6  Alpine Linux + glibc ランタイムをセットアップする（make setup-runtime）
   Step 7  mirakc をデプロイする（make deploy-mirakc）
   Step 8  ACAS マスターキーを設定する
@@ -51,7 +51,8 @@ Part 3: 起動・確認
 |------|------|
 | PIX-SMB400 本体 | USB ブートピンにアクセスできる状態 |
 | USB メモリ | FAT32 フォーマット、1 GB 以上 |
-| ビルド環境 | Docker（ブートファイル用）、`gcc-arm-linux-gnueabi` + `libssl-dev`（チューナーバイナリのビルド用）。mirakc 本体は `bin-armv7/` 同梱のためクロスビルド不要 |
+| ビルド環境 | Docker（ブートファイル用）、`gcc-arm-linux-gnueabi` + `libssl-dev`（チューナーバイナリのビルド用）。mirakc 本体はリリースから取得するためクロスビルド環境は不要 |
+| ネットワーク | mirakc バイナリ取得（`make fetch-mirakc-armv7`）に必要（`curl` を使用） |
 | ACAS マスターキー | 64 文字の hex |
 
 ---
@@ -68,7 +69,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 - `binwalk` + `cpio` — `kernel.img` から initramfs cpio を展開（[Step 0](#step-0-kernelimg-を入手して展開する)）
 - `adb` — デバイスとのバイナリ転送・android-libs 取得
 - `python3-pycryptodome` — `make_usb_boot.py`（`bootargs.bin` / RSA 鍵生成）
-- `git` / `curl` — mirakc バイナリ（`bin-armv7/`）の配置や、任意の再ビルド時のクローン
+- `git` / `curl` — mirakc バイナリ（GitHub Release）の取得や、任意の再ビルド時のクローン
 - **docker-in-docker** feature — `build_initramfs.sh` / `make_usb_boot.py` がコンテナ内で `docker run` を使うため有効化済み
 
 > 以降の手順に出てくる `sudo apt install ...`（`gcc-arm-linux-gnueabi`・`libssl-dev`・`binwalk` 等）は、
@@ -95,7 +96,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   └── initramfs_overlay/           initramfs オーバーレイファイル
 │       └── start_mirakc.sh          mirakc 自動起動スクリプト（電源 ON 時に実行される版）
 ├── bin/                             ビルドしたチューナーバイナリの出力先（make build-bins で生成）
-├── bin-armv7/                       mirakc 本体のプリビルド ARMv7 (glibc) バイナリ
+├── tmp/mirakc-armv7/                mirakc 本体 ARMv7 (glibc) バイナリの取得先（gitignore 対象・コミットされない）
 │   ├── mirakc                       mirakc 本体（yuchi0531/mirakc-BS4K fork）
 │   ├── mirakc-arib                  GR / BS / CS(2K) 用フィルタ・ジョブ
 │   ├── mirakc-arib-tlv              BS4K / BS8K (TLV) 用ジョブ
@@ -107,6 +108,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   ├── stop_android_tv.sh           Android TV 不要プロセス停止
 │   ├── crash_guard.sh               クラッシュ監視ウォッチドッグ
 │   ├── setup_proot.sh               Alpine rootfs + glibc-armhf 初回セットアップ
+│   ├── fetch_mirakc_armv7.sh        mirakc バイナリを GitHub Release から取得（通常はこちら）
 │   └── build_mirakc_armv7.sh        mirakc バイナリ再ビルドスクリプト（任意・上級者向け）
 ├── config/
 │   ├── config.yml                   mirakc 設定（server / channels / tuners / filters / jobs）
@@ -280,15 +282,20 @@ make build-bins ADB_TARGET=<デバイスのIPアドレス>:5555
 ```
 
 > mirakc 本体（`mirakc` / `mirakc-arib` / `mirakc-arib-tlv`）はこのターゲットではビルドされません。
-> `bin-armv7/` のプリビルドをそのまま使います（Step 5）。
+> GitHub Release から取得します（Step 5）。
 
 ---
 
 ### Step 5: mirakc バイナリを用意する（通常は何もしなくてよい）
 
-ARMv7 (glibc) 版の mirakc 3バイナリはリポジトリの `bin-armv7/` にコミット済みです。**通常はこのまま `make deploy-mirakc` でデプロイするだけで、クロスビルド環境は不要**です。
+ARMv7 (glibc) 版の mirakc 3バイナリはリポジトリに含まれません。デプロイ時に `make fetch-mirakc-armv7` が GitHub Release（[smb400-armv7-v1](https://github.com/yuchi0531/mirakc-BS4K/releases/tag/smb400-armv7-v1)）から `tmp/mirakc-armv7/` へ自動取得し、SHA256 を検証します（**クロスビルド環境は不要**）。手動で先に取得する場合:
 
-自分でバイナリを再生成したい場合のみ、Linux x86_64 ホストで以下を実行します（任意・上級者向け）:
+```sh
+make fetch-mirakc-armv7
+```
+
+- 取得済みで SHA256 が一致していれば再ダウンロードはスキップされます（強制再取得は `FORCE=1 make fetch-mirakc-armv7`）。
+- 通信できない環境では、自分でバイナリをビルドできます（任意・上級者向け）:
 
 ```sh
 # 前提: rustup/cargo + armv7-unknown-linux-gnueabihf target、
@@ -296,7 +303,7 @@ ARMv7 (glibc) 版の mirakc 3バイナリはリポジトリの `bin-armv7/` に�
 make build-mirakc-armv7       # = bash scripts/build_mirakc_armv7.sh
 ```
 
-スクリプトは [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K)（SIGTERM 対応コミット固定）、[yuchi0531/mirakc-arib-tlv](https://github.com/yuchi0531/mirakc-arib-tlv)（v0.1.0）、[mirakc/mirakc-arib](https://github.com/mirakc/mirakc-arib)（v0.24.37 相当）を `tmp/mirakc-cross-build/` に clone してクロスビルドし、`bin-armv7/` を更新します。
+スクリプトは [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K)（SIGTERM 対応コミット固定）、[yuchi0531/mirakc-arib-tlv](https://github.com/yuchi0531/mirakc-arib-tlv)（v0.1.0）、[mirakc/mirakc-arib](https://github.com/mirakc/mirakc-arib)（v0.24.37 相当）を `tmp/mirakc-cross-build/` に clone してクロスビルドし、`tmp/mirakc-armv7/` を更新します。
 
 ---
 
@@ -323,7 +330,7 @@ adb -s <デバイスのIPアドレス>:5555 shell \
 
 ### Step 7: mirakc をデプロイする
 
-PC 側でビルドした（または `bin-armv7/` 同梱の）mirakc バイナリと設定ファイルをデバイスへ転送します。
+PC 側の `tmp/mirakc-armv7/` にある mirakc バイナリ（`make fetch-mirakc-armv7` で取得。`make deploy-mirakc` 実行時には自動取得）と設定ファイルをデバイスへ転送します。
 
 ```sh
 make deploy-mirakc ADB_TARGET=<デバイスのIPアドレス>:5555
@@ -331,7 +338,7 @@ make deploy-mirakc ADB_TARGET=<デバイスのIPアドレス>:5555
 
 以下がデバイスにコピーされます:
 
-- `bin-armv7/mirakc` / `mirakc-arib` / `mirakc-arib-tlv` → `/data/local/tmp/mirakc/bin/`
+- `tmp/mirakc-armv7/mirakc` / `mirakc-arib` / `mirakc-arib-tlv` → `/data/local/tmp/mirakc/bin/`
 - `config/config.yml` → `/data/local/tmp/mirakc/config.yml`
 - `config/strings.yml` → `/data/local/tmp/mirakc/strings.yml`
 
@@ -574,6 +581,7 @@ curl -s http://<デバイスのIPアドレス>:40772/api/services | python3 -m j
 
 ```sh
 make build-bins          # チューナー/デコーダバイナリをビルド
+make fetch-mirakc-armv7  # mirakc 3バイナリを GitHub Release から取得（通常はこちら）
 make build-mirakc-armv7  # mirakc 3バイナリを ARMv7 向けに再ビルド（任意）
 make deploy-mirakc       # mirakc 本体・設定をデプロイ
 make setup-runtime       # Alpine rootfs + glibc ランタイムを構築
@@ -631,6 +639,18 @@ adb -s <デバイスのIPアドレス>:5555 shell "tail -20 /data/local/tmp/cras
 
 # メモリ確認
 adb -s <デバイスのIPアドレス>:5555 shell "grep MemAvailable /proc/meminfo"
+```
+
+### mirakc バイナリの取得に失敗する（fetch）
+
+`make fetch-mirakc-armv7` が失敗する場合:
+
+- **ネットワーク / GitHub に到達できない**: `curl -fL https://github.com/yuchi0531/mirakc-BS4K/releases/download/smb400-armv7-v1/SHA256SUMS` で疎通確認してください。プロキシ環境では `https_proxy` 等を設定します。
+- **SHA256 不一致**: ダウンロードが壊れている可能性があります。`FORCE=1 make fetch-mirakc-armv7` で再取得してください。
+- どうしても取得できない場合は、ソースからビルドできます（クロスビルド環境が必要）:
+
+```sh
+make build-mirakc-armv7
 ```
 
 ### mirakc が起動しない
