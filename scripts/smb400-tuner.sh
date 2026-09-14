@@ -1,7 +1,7 @@
 #!/system/bin/sh
-# smb400-tuner.sh — tuner command wrapper for Mirakurun on SMB400.
+# smb400-tuner.sh — tuner command wrapper for mirakc on SMB400.
 #
-# Usage (invoked by Mirakurun via tuners.yml):
+# Usage (invoked by mirakc via config/config.yml tuners.command):
 #   smb400-tuner.sh <channel>
 #
 # Channel format determines operating mode:
@@ -11,8 +11,9 @@
 #   BS4K: integer ≥40000   → tuner-stream-bs-ng | b61dec (descrambled TLV, ISDB-S3)
 #
 # BS4K descrambling note:
-#   Scrambled TLV is unreadable by Mirakurun's TLVFilter → we descramble here,
-#   inside the tuner command, before output.  tuners.yml sets tlvDecoder: null.
+#   Scrambled TLV would be unreadable downstream, so we descramble it here,
+#   inside the tuner command, before output.  mirakc handles BS4K as TLV
+#   passthrough (no decode-filter required).
 #   b61dec and tuner-stream-bs-ng run via chroot /proc/1/root to access the
 #   Android linker paths required by libstationtv_*/libhi_msp.
 #
@@ -57,7 +58,7 @@ case "$CHANNEL" in
             exit 1
         fi
         # 2K BS is MULTI2-scrambled (NHK / 有料局). Descramble in-command via the
-        # ACAS chip (conventional/B-CAS CAS, APDU P2=0x02) so Mirakurun's TSFilter
+        # ACAS chip (conventional/B-CAS CAS, APDU P2=0x02) so mirakc's TS filter
         # receives plain MPEG-TS.  b21dec needs the Android linker/vendor libs, so
         # the pipe runs under chroot /proc/1/root (same as the BS4K path).  No key
         # arg: the chip holds the broadcaster work key (Kw) from prior live EMM.

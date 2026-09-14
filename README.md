@@ -49,9 +49,11 @@ Part 3: 起動・確認
 
 | 項目 | 内容 |
 |------|------|
+| 作業コピー | 本リポジトリ（`git clone https://github.com/yuchi0531/pix-smb400-mirakc`）。以降のコマンドは clone したディレクトリのルートで実行 |
 | PIX-SMB400 本体 | USB ブートピンにアクセスできる状態 |
 | USB メモリ | FAT32 フォーマット、1 GB 以上 |
-| ビルド環境 | Docker（ブートファイル用）、`gcc-arm-linux-gnueabi` + `libssl-dev`（チューナーバイナリのビルド用）。mirakc 本体はリリースから取得するためクロスビルド環境は不要 |
+| ビルド環境 | Docker + `python3`（ブートファイル用）、`binwalk`（`kernel.img` 展開用）、`gcc-arm-linux-gnueabi` + `libssl-dev`（チューナーバイナリのビルド用）。mirakc 本体はリリースから取得するためクロスビルド環境は不要 |
+| ADB | デバイスへの接続（`adb connect` / `adb devices` で認識済みであること）。全デプロイ系コマンドで必要 |
 | ネットワーク | mirakc バイナリ取得（`make fetch-mirakc-armv7`）に必要（`curl` を使用） |
 | ACAS マスターキー | 64 文字の hex |
 
@@ -346,6 +348,10 @@ mirakc の設定は `config/config.yml` です（`server.addrs` は `0.0.0.0:407
 
 > 設定やスクリプトを更新した場合は `make push-all` だけ再実行します（チューナーバイナリ + mirakc バイナリ + スクリプト + 設定を一括更新）。
 
+> **注意（initramfs 再ビルドが必要なケース）**
+> `scripts/` 内のファイル（`smb400-tuner.sh`, `start_mirakc.sh`, `crash_guard.sh`, `stop_android_tv.sh`）を変更した場合、**起動のたびに initramfs 内の版が `/data/local/tmp/` へ上書きコピーされる**ため、`make push-scripts` の変更は再起動で元に戻ってしまいます。
+> 恒久的に反映するには `boot/initramfs_overlay/` へ同期して `bash boot/build_initramfs.sh <cpio>` で initramfs を再ビルドし、USB メモリを更新してください（[BOOT.md](BOOT.md) 参照）。
+
 ---
 
 ### Step 8: ACAS マスターキーを設定する
@@ -423,6 +429,9 @@ bash boot/build_initramfs.sh /path/to/_kernel.img.extracted/988000
 
 - `boot/initramfs_overlay/start_mirakc.sh` が `/data/local/tmp/start_mirakc.sh` として配備され、起動時に実行されます。
 - **rootfs 名が `mirakurun-root` → `mirakc-root` に変わったため、既存環境は要再セットアップ**です（`make setup-runtime` → `make deploy-mirakc` を再実行してください）。
+  - 旧環境の掃除: `adb shell rm -rf /data/local/tmp/mirakurun-root /data/local/tmp/mirakurun`（ディスク節約。旧ファイルはもう使われません）
+  - 自動起動も `mirakurun_proxy` → `mirakc_proxy` に切り替えるため、initramfs の再ビルドが必要です
+  - 注: `/data/local/tmp` を**丸ごと** `rm` してはいけません（チューナーバイナリや ACAS キーが消えます）
 - 詳細は [BOOT.md](BOOT.md) を参照。
 
 ---
