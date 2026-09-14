@@ -346,6 +346,7 @@ static void feed_pmt(const uint8_t *pkt) {
     int pusi = (pkt[1] >> 6) & 1;
     int cc   = pkt[3] & 0x0f;
     int afc  = (pkt[3] >> 4) & 0x3;
+    if (!(afc & 0x1)) return;                       /* no payload (CC not incremented) */
     int off  = 4;
     if (afc & 0x2) off = 5 + pkt[4];
     if (off >= TS_PKT) return;
@@ -356,7 +357,6 @@ static void feed_pmt(const uint8_t *pkt) {
     for (int i = 0; i < NSECASM; i++)
         if (g_secasm[i].active && g_secasm[i].pid == pid) { a = &g_secasm[i]; break; }
     if (pusi) {
-        if (paylen < 1) return;
         int ptr = pay[0];
         if (1 + ptr + 3 > paylen) return;
         const uint8_t *sec = pay + 1 + ptr;
@@ -376,11 +376,10 @@ static void feed_pmt(const uint8_t *pkt) {
         return;
     }
     if (!a) return;                                 /* no assembly in flight */
+    if (cc == a->cc) return;                        /* duplicate packet: ignore */
     if (((a->cc + 1) & 0x0f) != cc) { a->active = 0; return; }  /* gap: drop */
-    if (cc == a->cc) return;                        /* duplicate: ignore */
     int need = (int)a->total - (int)a->have;
     int take = need < paylen ? need : paylen;
-    if (a->have + take > SEC_MAX) { a->active = 0; return; }
     memcpy(a->buf + a->have, pay, take);
     a->have += (uint16_t)take; a->cc = (uint8_t)cc;
     if (a->have >= a->total) { a->active = 0; parse_pmt_sec(a->buf, (int)(a->total - 3)); }
