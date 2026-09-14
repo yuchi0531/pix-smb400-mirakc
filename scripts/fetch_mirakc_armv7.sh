@@ -80,7 +80,7 @@ echo "[*] Verifying SHA256..."
 mv "$DL_DIR/mirakc-armv7"           "$OUT_DIR/mirakc"
 mv "$DL_DIR/mirakc-arib-armv7"      "$OUT_DIR/mirakc-arib"
 mv "$DL_DIR/mirakc-arib-tlv-armv7"  "$OUT_DIR/mirakc-arib-tlv"
-chmod +x $OUT_DIR/mirakc $OUT_DIR/mirakc-arib $OUT_DIR/mirakc-arib-tlv
+chmod +x "$OUT_DIR/mirakc" "$OUT_DIR/mirakc-arib" "$OUT_DIR/mirakc-arib-tlv"
 
 # 以後のスキップ判定用に、最終名で SHA256SUMS を作り直す
 # （中身は Release のアセットと同一。ファイル名のみ変換）

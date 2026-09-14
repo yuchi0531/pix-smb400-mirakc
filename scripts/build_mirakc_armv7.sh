@@ -110,7 +110,8 @@ git -C "$TLV_SRC" checkout --detach "$MIRAKC_TLV_REF"
 
 (
     cd "$TLV_SRC"
-    cargo build --release --locked --target "$TARGET"
+    CARGO_PROFILE_RELEASE_LTO=thin \
+        cargo build --release --locked --target "$TARGET"
 )
 
 # --------------------------------------------------------------- mirakc-arib

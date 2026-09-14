@@ -9,7 +9,6 @@ FROM mcr.microsoft.com/devcontainers/base:trixie
 #   cpio                   : unpack the firmware initramfs (build_initramfs.sh, host side)
 #   adb                    : pull android-libs / push binaries & scripts to the device
 #   python3-pycryptodome   : make_usb_boot.py (bootargs.bin / RSA key generation)
-#   nodejs, npm            : build Mirakurun-BS4K (npm install && npm run build)
 #   curl                   : make start / make test, setup_proot.sh downloads
 #   git                    : clone Mirakurun-BS4K
 #
@@ -24,8 +23,6 @@ RUN apt-get update \
         cpio \
         adb \
         python3-pycryptodome \
-        nodejs \
-        npm \
         curl \
         git \
     && apt-get clean \

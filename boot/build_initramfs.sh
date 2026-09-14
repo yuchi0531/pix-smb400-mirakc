@@ -2,15 +2,15 @@
 # build_initramfs.sh — PIX-SMB400 initramfs_patched.uimg のビルドスクリプト
 #
 # 使い方:
-#   bash release/boot/build_initramfs.sh <firmware_cpio>
+#   bash boot/build_initramfs.sh <firmware_cpio>
 #
 #   <firmware_cpio>: kernel.img を binwalk で展開して取り出した initramfs cpio ファイル
 #                   例: _kernel.img.extracted/988000
 #
 # 必要なもの: docker, python3
-# 出力: release/boot/initramfs_patched.uimg（上書き）
+# 出力: boot/initramfs_patched.uimg（上書き）
 #
-# 詳細は release/BOOT.md を参照。
+# 詳細は BOOT.md を参照。
 
 set -euo pipefail
 
@@ -36,20 +36,39 @@ PATCH_SCRIPT="$SCRIPT_DIR/patch_init.py"
 WORK_DIR="${WORK_DIR:-/tmp/smb400_initramfs_work}"
 OUT="$SCRIPT_DIR/initramfs_patched.uimg"
 
-# --- 0. tuner スクリプト同期チェック (再発防止) ---
-# scripts/smb400-tuner.sh が正本。boot/initramfs_overlay/smb400_tuner.sh は
-# ファイル名の -/_ 違いのみで内容は同一に保つこと。不一致なら中断する。
-CANONICAL_TUNER_SH="$SCRIPT_DIR/../scripts/smb400-tuner.sh"
-OVERLAY_TUNER_SH="$OVERLAY_DIR/smb400_tuner.sh"
-if [ -f "$CANONICAL_TUNER_SH" ] && [ -f "$OVERLAY_TUNER_SH" ]; then
-    if ! diff -q "$CANONICAL_TUNER_SH" "$OVERLAY_TUNER_SH" >/dev/null; then
-        echo "[!] 不一致: scripts/smb400-tuner.sh と boot/initramfs_overlay/smb400_tuner.sh が異なります"
-        echo "    先に同期してください: cp scripts/smb400-tuner.sh boot/initramfs_overlay/smb400_tuner.sh"
-        diff -u "$CANONICAL_TUNER_SH" "$OVERLAY_TUNER_SH" | head -n 50 || true
-        exit 1
+# --- 0. スクリプト同期チェック (再発防止) ---
+# scripts/*.sh が正本。boot/initramfs_overlay/ 側の同名ファイルは内容を同一に
+# 保つこと（ファイル名の -/_ 違いのみ許容）。不一致なら中断する。
+#
+# 対象: smb400-tuner.sh, crash_guard.sh, stop_android_tv.sh
+#   scripts/smb400-tuner.sh    ↔ boot/initramfs_overlay/smb400_tuner.sh
+#   scripts/crash_guard.sh     ↔ boot/initramfs_overlay/crash_guard.sh
+#   scripts/stop_android_tv.sh ↔ boot/initramfs_overlay/stop_android_tv.sh
+#
+# 対象外 (意図的な差分):
+#   scripts/start_mirakc.sh は手動実行用で終了コードを返すのに対し、
+#   boot/initramfs_overlay/start_mirakc.sh は init 起動用で必ず exit 0 する。
+#   この差分は意図的であるため、一致チェックは課さない。
+SYNC_FAILED=0
+check_sync() {
+    # $1: scripts側, $2: overlay側
+    if [ ! -f "$1" ] || [ ! -f "$2" ]; then
+        return 0
     fi
-    echo "[+] tuner スクリプト同期OK"
+    if ! diff -q "$1" "$2" >/dev/null; then
+        echo "[!] 不一致: $1 と $2 が異なります"
+        echo "    先に同期してください: cp $1 $2"
+        diff -u "$1" "$2" | head -n 50 || true
+        SYNC_FAILED=1
+    fi
+}
+check_sync "$SCRIPT_DIR/../scripts/smb400-tuner.sh"    "$OVERLAY_DIR/smb400_tuner.sh"
+check_sync "$SCRIPT_DIR/../scripts/crash_guard.sh"     "$OVERLAY_DIR/crash_guard.sh"
+check_sync "$SCRIPT_DIR/../scripts/stop_android_tv.sh" "$OVERLAY_DIR/stop_android_tv.sh"
+if [ "$SYNC_FAILED" -ne 0 ]; then
+    exit 1
 fi
+echo "[+] スクリプト同期OK (tuner / crash_guard / stop_android_tv)"
 
 echo "[*] Work dir: $WORK_DIR"
 echo "[*] CPIO src: $CPIO_SRC"

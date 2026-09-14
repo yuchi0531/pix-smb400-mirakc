@@ -58,12 +58,16 @@ $ADB shell "echo 'nameserver 8.8.8.8' > '$ROOTFS_DIR/etc/resolv.conf'"
 $ADB shell "rm -f '$ROOTFS_DIR/var/run'; mkdir -p '$ROOTFS_DIR/var/run' '$ROOTFS_DIR/run'"
 
 echo "=== Step 4: Deploy real glibc armhf runtime ==="
-# Idempotent: skip the download/push when the loader is already on the device.
+# Idempotent: skip the download/push only when the loader + libstdc++ + libgcc
+# are all already on the device. If libstdc++.so.6 were missing, mirakc-arib
+# would fail to start (GLIBCXX_3.4.32), so all three are checked.
 # (Compare output because adb shell does not always propagate remote exit codes.)
-glibc_present=$($ADB shell "[ -f '$GLIBC_LIB_DEVICE/ld-linux-armhf.so.3' ] && echo yes || echo no" | tr -d '\r')
-if [ "$glibc_present" = "yes" ]; then
-    echo "[=] glibc runtime already on device — skipping download/push."
-else
+glibc_present=$($ADB shell "[ -f '$GLIBC_LIB_DEVICE/ld-linux-armhf.so.3' ] && [ -f '$GLIBC_LIB_DEVICE/libstdc++.so.6' ] && [ -f '$GLIBC_LIB_DEVICE/libgcc_s.so.1' ] && echo yes || echo no" | tr -d '\r\n')
+case "$glibc_present" in
+    *yes*)
+        echo "[=] glibc runtime already on device — skipping download/push."
+        ;;
+    *)
     GLIBC_DIR="$WORK_DIR/glibc-armhf"
     mkdir -p "$GLIBC_DIR"
 
@@ -111,14 +115,28 @@ else
     if ! (cd "$WORK_DIR" && apt-get $APT_OPTS download $GLIBC_PKGS 2>&1 | tail -2); then
         echo "[*] apt-get download failed — falling back to --print-uris + curl..."
         # Same three packages, but fetched directly from the ports mirror.
-        # Output format: '<uri>' <filename> <size> <hash>
+        # apt output: '<uri>' <filename> <size> [<hash>]
+        # Extract uri/fname/hash (hash may be absent on older apt).
         # shellcheck disable=SC2086
         apt-get $APT_OPTS --print-uris download $GLIBC_PKGS 2>/dev/null \
-            | sed -n "s/^'\(http[^']*\)'[[:space:]]\+\([^[:space:]]*\.deb\).*/\1 \2/p" \
+            | sed -n "s/^'\(http[^']*\)'[[:space:]]\+\([^[:space:]]*\.deb\)\([[:space:]]\+[^[:space:]]*\)\{0,1\}\([[:space:]]\+[^[:space:]]*\)\{0,1\}$/\1 \2\4/p" \
             > "$WORK_DIR/glibc-uris.txt"
-        while read -r uri fname; do
+        while read -r uri fname hash; do
             echo "    curl $fname"
             curl -fL -o "$WORK_DIR/$fname" "$uri"
+            case "$hash" in
+                SHA256:*)
+                    expected="${hash#SHA256:}"
+                    actual=$(sha256sum "$WORK_DIR/$fname" | awk '{print $1}')
+                    if [ "$actual" != "$expected" ]; then
+                        echo "[!] SHA256 mismatch: $fname (expected $expected, got $actual)"
+                        exit 1
+                    fi
+                    ;;
+                *)
+                    echo "[!] unverified: $fname (SHA256 hash unavailable from apt)"
+                    ;;
+            esac
         done < "$WORK_DIR/glibc-uris.txt"
     fi
 
@@ -137,7 +155,8 @@ else
     # partial deploy cannot end up nested as glibc-armhf/glibc-armhf.
     $ADB shell mkdir -p "$GLIBC_DIR_DEVICE"
     $ADB push "$GLIBC_DIR/." "$GLIBC_DIR_DEVICE/"
-fi
+    ;;
+esac
 
 echo ""
 echo "=== Setup complete ==="
@@ -152,4 +171,5 @@ $ADB shell "mkdir -p '$ROOTFS_DIR/data/local/tmp'; \
     mount --bind '$DEVICE_TMP' '$ROOTFS_DIR/data/local/tmp' 2>/dev/null || true; \
     chroot '$ROOTFS_DIR' /bin/sh -c 'LD_LIBRARY_PATH=$GLIBC_LIB_DEVICE $GLIBC_LIB_DEVICE/ld-linux-armhf.so.3 --library-path $GLIBC_LIB_DEVICE $DEVICE_TMP/mirakc/bin/mirakc --version 2>&1 | head -2' || true; \
     chroot '$ROOTFS_DIR' /bin/sh -c 'LD_LIBRARY_PATH=$GLIBC_LIB_DEVICE $GLIBC_LIB_DEVICE/ld-linux-armhf.so.3 --library-path $GLIBC_LIB_DEVICE $DEVICE_TMP/mirakc/bin/mirakc-arib --version 2>&1 | head -2' || true; \
+    chroot '$ROOTFS_DIR' /bin/sh -c 'LD_LIBRARY_PATH=$GLIBC_LIB_DEVICE $GLIBC_LIB_DEVICE/ld-linux-armhf.so.3 --library-path $GLIBC_LIB_DEVICE $DEVICE_TMP/mirakc/bin/mirakc-arib-tlv --version 2>&1 | head -2' || true; \
     umount '$ROOTFS_DIR/data/local/tmp' 2>/dev/null || true" || true

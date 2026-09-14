@@ -1,4 +1,4 @@
-PIX-SMB400 BS4K Mirakurun setup
+PIX-SMB400 mirakc setup
 Copyright 2026 tsuyopon123
 
 Licensed under the Apache License, Version 2.0 (see LICENSE).
@@ -23,6 +23,14 @@ License 2.0 and retain their original copyright headers:
 Related components (NOT bundled — deployed/built separately)
 ------------------------------------------------------------------------
 
-  Mirakurun (Apache-2.0)  — cloned and built by the user during setup.
-  OpenSSL libssl/libcrypto — linked at runtime from the device's own
-                             Android system libraries (not redistributed).
+  mirakc (MIT OR Apache-2.0) — ARMv7 binaries distributed via the GitHub
+                               Release `smb400-armv7-v1` of
+                               yuchi0531/mirakc-BS4K (not included in this
+                               repository).
+  mirakc-arib (GPL-2.0-or-later)
+                             — same release page (upstream mirakc/mirakc-arib).
+  mirakc-arib-tlv (MIT OR Apache-2.0)
+                             — same release page (yuchi0531/mirakc-arib-tlv).
+  OpenSSL libssl/libcrypto — b61dec links against the device's own Android
+                             system libssl/libcrypto at runtime (not
+                             redistributed).

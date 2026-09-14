@@ -17,6 +17,7 @@
 #   make stop               停止
 #   make log                ログ確認
 #   make test               BS4K ストリーム疎通確認
+#   ※ 初回: make build-bins → fetch-mirakc-armv7 → setup-runtime → deploy-mirakc の順に実行
 
 # ---------- 変更可能な設定 ----------
 # ADB_TARGET 未指定時は adb devices から自動検出
@@ -58,7 +59,7 @@ CFLAGS_ARM   := -march=armv7-a -mfloat-abi=softfp -mfpu=vfpv3 \
 # ------------------------------------
 
 .PHONY: build-bins fetch-mirakc-armv7 build-mirakc-armv7 android-libs \
-        push-all push-bins push-scripts push-config \
+        check-tuner-bins push-all push-bins push-scripts push-config \
         deploy-mirakc setup-runtime \
         start stop restart log test test-cs help
 
@@ -124,10 +125,22 @@ build-mirakc-armv7:
 
 # ---- デプロイ ----
 
+# 初回は bin/ が未生成のため、先に存在チェックして案内を出す
+# （make build-bins がクロスツールチェーンで生成する）。
+check-tuner-bins:
+	@missing=""; for f in bin/tuner-stream-ng bin/tuner-stream-bs-ng bin/b61dec bin/tuner-stream-bs bin/b21dec; do \
+	    [ -f "$$f" ] || missing="$$missing $$f"; \
+	done; \
+	if [ -n "$$missing" ]; then \
+	    echo "[!] チューナーバイナリが未ビルドです:$$missing"; \
+	    echo "    先に 'make build-bins' を実行してください (arm-linux-gnueabi-gcc が必要)。"; \
+	    exit 1; \
+	fi
+
 # チューナー/デコーダバイナリを $(DEVICE_TMP)/ へ、
 # mirakc 3バイナリを $(MIRAKC_DIR)/bin/ へ push
 # mirakc バイナリは $(MIRAKC_ARM_DIR)/ から（無ければ Release から自動取得）
-push-bins: fetch-mirakc-armv7
+push-bins: check-tuner-bins fetch-mirakc-armv7
 	@echo "[*] Pushing tuner/decoder binaries..."
 	$(ADB) push bin/tuner-stream-ng    $(DEVICE_TMP)/tuner-stream-ng
 	$(ADB) push bin/tuner-stream-bs-ng $(DEVICE_TMP)/tuner-stream-bs-ng
