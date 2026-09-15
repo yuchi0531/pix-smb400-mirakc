@@ -39,23 +39,36 @@ ALPINE_VERSION=3.20
 ALPINE_ARCH=armhf
 ALPINE_URL="https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VERSION}/releases/${ALPINE_ARCH}/alpine-minirootfs-${ALPINE_VERSION}.0-${ALPINE_ARCH}.tar.gz"
 
-echo "=== Step 1: Download Alpine ${ALPINE_VERSION} (${ALPINE_ARCH}) ==="
-curl -L -o "$WORK_DIR/alpine-rootfs.tar.gz" "$ALPINE_URL"
-# Android's toybox tar cannot exec gunzip, so decompress on the host and push
-# an uncompressed .tar (extracted with `tar xf` on the device).
-gunzip "$WORK_DIR/alpine-rootfs.tar.gz"   # → $WORK_DIR/alpine-rootfs.tar
+# Idempotent: the Alpine minirootfs is immutable, so skip the download/extract
+# when it is already provisioned. Re-extracting would also fail because Step 3
+# replaces Alpine's /var/run symlink with a real directory (tar cannot remove a
+# directory to recreate the symlink), so a presence check is required anyway.
+alpine_present=$($ADB shell "[ -f '$ROOTFS_DIR/etc/alpine-release' ] && echo yes || echo no" | tr -d '\r\n')
+case "$alpine_present" in
+    *yes*)
+        echo "=== Step 1-2: Alpine rootfs already on device — skipping download/extract. ==="
+        ;;
+    *)
+        echo "=== Step 1: Download Alpine ${ALPINE_VERSION} (${ALPINE_ARCH}) ==="
+        curl -L -o "$WORK_DIR/alpine-rootfs.tar.gz" "$ALPINE_URL"
+        # Android's toybox tar cannot exec gunzip, so decompress on the host and push
+        # an uncompressed .tar (extracted with `tar xf` on the device).
+        gunzip "$WORK_DIR/alpine-rootfs.tar.gz"   # → $WORK_DIR/alpine-rootfs.tar
 
-echo "=== Step 2: Push and extract Alpine rootfs ==="
-$ADB shell mkdir -p "$ROOTFS_DIR"
-$ADB push "$WORK_DIR/alpine-rootfs.tar" "$DEVICE_TMP/alpine-rootfs.tar"
-$ADB shell "cd '$ROOTFS_DIR' && tar xf '$DEVICE_TMP/alpine-rootfs.tar'"
-$ADB shell "rm '$DEVICE_TMP/alpine-rootfs.tar'"
+        echo "=== Step 2: Push and extract Alpine rootfs ==="
+        $ADB shell mkdir -p "$ROOTFS_DIR"
+        $ADB push "$WORK_DIR/alpine-rootfs.tar" "$DEVICE_TMP/alpine-rootfs.tar"
+        $ADB shell "cd '$ROOTFS_DIR' && tar xf '$DEVICE_TMP/alpine-rootfs.tar'"
+        $ADB shell "rm '$DEVICE_TMP/alpine-rootfs.tar'"
+        ;;
+esac
 
 echo "=== Step 3: Configure Alpine DNS and runtime dirs ==="
 $ADB shell "echo 'nameserver 8.8.8.8' > '$ROOTFS_DIR/etc/resolv.conf'"
 # Alpine's /var/run is normally a symlink to /run; make both real directories
 # so the init.pixboot.rc mkdir lines and mirakc never depend on a dangling link.
-$ADB shell "rm -f '$ROOTFS_DIR/var/run'; mkdir -p '$ROOTFS_DIR/var/run' '$ROOTFS_DIR/run'"
+# -rf: on the second run /var/run is already a real directory (-f alone fails).
+$ADB shell "rm -rf '$ROOTFS_DIR/var/run'; mkdir -p '$ROOTFS_DIR/var/run' '$ROOTFS_DIR/run'"
 
 echo "=== Step 4: Deploy real glibc armhf runtime ==="
 # Idempotent: skip the download/push only when the loader + libstdc++ + libgcc
@@ -167,9 +180,11 @@ echo "mirakc startup test (best effort — needs 'make deploy-mirakc' first):"
 # /data/local/tmp is bind-mounted into the rootfs so the chroot sees the glibc
 # runtime and the mirakc binaries. The explicit loader is used because the
 # /lib/ld-linux-armhf.so.3 symlink is created by start_mirakc.sh at launch.
+# `sh -l` (login shell) is required: adb shell exports Android's PATH, which
+# has no coreutils, so a plain `sh -c` cannot find head/ls inside the chroot.
 $ADB shell "mkdir -p '$ROOTFS_DIR/data/local/tmp'; \
     mount --bind '$DEVICE_TMP' '$ROOTFS_DIR/data/local/tmp' 2>/dev/null || true; \
-    chroot '$ROOTFS_DIR' /bin/sh -c 'LD_LIBRARY_PATH=$GLIBC_LIB_DEVICE $GLIBC_LIB_DEVICE/ld-linux-armhf.so.3 --library-path $GLIBC_LIB_DEVICE $DEVICE_TMP/mirakc/bin/mirakc --version 2>&1 | head -2' || true; \
-    chroot '$ROOTFS_DIR' /bin/sh -c 'LD_LIBRARY_PATH=$GLIBC_LIB_DEVICE $GLIBC_LIB_DEVICE/ld-linux-armhf.so.3 --library-path $GLIBC_LIB_DEVICE $DEVICE_TMP/mirakc/bin/mirakc-arib --version 2>&1 | head -2' || true; \
-    chroot '$ROOTFS_DIR' /bin/sh -c 'LD_LIBRARY_PATH=$GLIBC_LIB_DEVICE $GLIBC_LIB_DEVICE/ld-linux-armhf.so.3 --library-path $GLIBC_LIB_DEVICE $DEVICE_TMP/mirakc/bin/mirakc-arib-tlv --version 2>&1 | head -2' || true; \
+    chroot '$ROOTFS_DIR' /bin/sh -l -c 'LD_LIBRARY_PATH=$GLIBC_LIB_DEVICE $GLIBC_LIB_DEVICE/ld-linux-armhf.so.3 --library-path $GLIBC_LIB_DEVICE $DEVICE_TMP/mirakc/bin/mirakc --version 2>&1 | head -2' || true; \
+    chroot '$ROOTFS_DIR' /bin/sh -l -c 'LD_LIBRARY_PATH=$GLIBC_LIB_DEVICE $GLIBC_LIB_DEVICE/ld-linux-armhf.so.3 --library-path $GLIBC_LIB_DEVICE $DEVICE_TMP/mirakc/bin/mirakc-arib --version 2>&1 | head -2' || true; \
+    chroot '$ROOTFS_DIR' /bin/sh -l -c 'LD_LIBRARY_PATH=$GLIBC_LIB_DEVICE $GLIBC_LIB_DEVICE/ld-linux-armhf.so.3 --library-path $GLIBC_LIB_DEVICE $DEVICE_TMP/mirakc/bin/mirakc-arib-tlv --version 2>&1 | head -2' || true; \
     umount '$ROOTFS_DIR/data/local/tmp' 2>/dev/null || true" || true
