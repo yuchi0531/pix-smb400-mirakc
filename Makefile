@@ -9,10 +9,6 @@
 # 取得は make fetch-mirakc-armv7（デプロイ時に自動実行）。
 # ソースからビルドする場合のみ make build-mirakc-armv7。
 #
-# Web UI (mirakc-webui) の dist も GitHub Release (smb400-webui-v1)
-# から取得し、mirakc の server.mounts で /www として配信する。
-# 取得は make fetch-webui（デプロイ時に自動実行）。
-#
 # 設定: config/config.yml, config/strings.yml
 # API : http://<device>:40772 (Mirakurun 互換)
 #
@@ -27,9 +23,9 @@
 # ---------- 変更可能な設定 ----------
 # ADB_TARGET 未指定時は adb devices から自動検出
 # 複数台接続時は明示指定: make <target> ADB_TARGET=192.168.1.126:5555
-# ADB を使わないターゲット (help, fetch-mirakc-armv7, build-mirakc-armv7, fetch-webui) は ADB なしでも実行できる。
+# ADB を使わないターゲット (help, fetch-mirakc-armv7, build-mirakc-armv7) は ADB なしでも実行できる。
 ifndef ADB_TARGET
-  ifeq ($(filter help fetch-mirakc-armv7 build-mirakc-armv7 fetch-webui,$(MAKECMDGOALS)),)
+  ifeq ($(filter help fetch-mirakc-armv7 build-mirakc-armv7,$(MAKECMDGOALS)),)
     _DETECTED := $(shell adb devices 2>/dev/null | awk '/\tdevice$$/{print $$1}')
     ifeq ($(words $(_DETECTED)),0)
       $(error No ADB device connected. Run: adb connect <ip>:<port>)
@@ -48,9 +44,6 @@ MIRAKC_DIR := $(DEVICE_TMP)/mirakc
 # mirakc 3バイナリの取得先 (make fetch-mirakc-armv7 / build-mirakc-armv7 が出力)
 MIRAKC_ARM_DIR := tmp/mirakc-armv7
 
-# mirakc Web UI (mirakc-webui) dist の取得先 (make fetch-webui が出力)
-MIRAKC_WEBUI_DIR := tmp/mirakc-webui
-
 # バイナリビルド設定
 # 要件: gcc-arm-linux-gnueabi（sudo apt install gcc-arm-linux-gnueabi）
 #       libssl-dev（b61dec の OpenSSL ヘッダ用）
@@ -66,8 +59,8 @@ CFLAGS_ARM   := -march=armv7-a -mfloat-abi=softfp -mfpu=vfpv3 \
                 -L$(ANDROID_LIBS) -Wl,-rpath-link,$(ANDROID_LIBS)
 # ------------------------------------
 
-.PHONY: build-bins fetch-mirakc-armv7 build-mirakc-armv7 fetch-webui android-libs \
-        check-tuner-bins push-all push-bins push-scripts push-config push-webui \
+.PHONY: build-bins fetch-mirakc-armv7 build-mirakc-armv7 android-libs \
+        check-tuner-bins push-all push-bins push-scripts push-config \
         deploy-mirakc setup-runtime \
         start stop restart log test test-cs help
 
@@ -131,12 +124,6 @@ fetch-mirakc-armv7:
 build-mirakc-armv7:
 	bash scripts/build_mirakc_armv7.sh
 
-# mirakc 用 WebUI (mirakc-webui) のビルド済み dist を GitHub Release
-# (smb400-webui-v1) から tmp/mirakc-webui/ へ取得。
-# 冪等: SHA256 検証に合格していれば再ダウンロードしない（FORCE=1 で強制再取得）。
-fetch-webui:
-	bash scripts/fetch_webui.sh
-
 # ---- デプロイ ----
 
 # 初回は bin/ が未生成のため、先に存在チェックして案内を出す
@@ -194,22 +181,14 @@ push-config:
 	$(ADB) push config/config.yml  $(MIRAKC_DIR)/config.yml
 	$(ADB) push config/strings.yml $(MIRAKC_DIR)/strings.yml
 
-# Web UI (mirakc-webui) をデバイスへ push
-# （config.yml の server.mounts で /www として配信される）
-push-webui: fetch-webui
-	@echo "[*] Pushing mirakc Web UI..."
-	$(ADB) shell mkdir -p $(MIRAKC_DIR)/www
-	$(ADB) push $(MIRAKC_WEBUI_DIR)/. $(MIRAKC_DIR)/www/
-
-push-all: push-bins push-scripts push-config push-webui
+push-all: push-bins push-scripts push-config
 	@echo "[+] Done. Run 'make start' to launch mirakc."
 
-# 初回のみ: mirakc 本体・設定・Web UI をデバイスへデプロイ。
-# バイナリと Web UI は $(MIRAKC_ARM_DIR)/ $(MIRAKC_WEBUI_DIR)/ から
-# （無ければ Release から自動取得）。
-deploy-mirakc: fetch-mirakc-armv7 fetch-webui
+# 初回のみ: mirakc 本体・設定をデバイスへデプロイ。
+# バイナリは $(MIRAKC_ARM_DIR)/ から（無ければ Release から自動取得）。
+deploy-mirakc: fetch-mirakc-armv7
 	@echo "[*] Deploying mirakc to device..."
-	$(ADB) shell mkdir -p $(MIRAKC_DIR)/bin $(MIRAKC_DIR)/epg $(MIRAKC_DIR)/www
+	$(ADB) shell mkdir -p $(MIRAKC_DIR)/bin $(MIRAKC_DIR)/epg
 	$(ADB) push config/config.yml  $(MIRAKC_DIR)/config.yml
 	$(ADB) push config/strings.yml $(MIRAKC_DIR)/strings.yml
 	$(ADB) push config/services.json $(MIRAKC_DIR)/epg/services.json
@@ -220,8 +199,6 @@ deploy-mirakc: fetch-mirakc-armv7 fetch-webui
 	    $(MIRAKC_DIR)/bin/mirakc \
 	    $(MIRAKC_DIR)/bin/mirakc-arib \
 	    $(MIRAKC_DIR)/bin/mirakc-arib-tlv
-	@echo "[*] Pushing mirakc Web UI..."
-	$(ADB) push $(MIRAKC_WEBUI_DIR)/. $(MIRAKC_DIR)/www/
 	@echo "[+] mirakc deployed."
 
 # 初回のみ: Alpine rootfs + glibc (armhf) ランタイムをデバイスに構築（インターネット接続必要）
@@ -303,13 +280,11 @@ help:
 	@echo "  make android-libs        デバイスから Android システムライブラリを取得"
 	@echo "  make fetch-mirakc-armv7  mirakc 3バイナリを GitHub Release から取得"
 	@echo "  make build-mirakc-armv7  mirakc 3バイナリを ARMv7 向けに再ビルド (任意・上級者向け)"
-	@echo "  make fetch-webui         mirakc WebUI (mirakc-webui) を GitHub Release から取得"
-	@echo "  make push-all            バイナリ・スクリプト・設定・Web UI を一括デプロイ"
+	@echo "  make push-all            バイナリ・スクリプト・設定を一括デプロイ"
 	@echo "  make push-bins           バイナリのみ (チューナー5種 + mirakc 3種)"
 	@echo "  make push-scripts        スクリプトのみ (smb400-tuner.sh 等)"
 	@echo "  make push-config         設定のみ (config.yml / strings.yml)"
-	@echo "  make push-webui          WebUI のみ配備"
-	@echo "  make deploy-mirakc       mirakc 本体・設定・Web UI をデプロイ (初回のみ)"
+	@echo "  make deploy-mirakc       mirakc 本体・設定をデプロイ (初回のみ)"
 	@echo "  make setup-runtime       Alpine rootfs + glibc ランタイムを構築 (初回のみ)"
 	@echo "  make start               mirakc 起動"
 	@echo "  make stop                mirakc 停止"
