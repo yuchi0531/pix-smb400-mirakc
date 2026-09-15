@@ -182,9 +182,19 @@ echo "mirakc startup test (best effort — needs 'make deploy-mirakc' first):"
 # /lib/ld-linux-armhf.so.3 symlink is created by start_mirakc.sh at launch.
 # `sh -l` (login shell) is required: adb shell exports Android's PATH, which
 # has no coreutils, so a plain `sh -c` cannot find head/ls inside the chroot.
-$ADB shell "mkdir -p '$ROOTFS_DIR/data/local/tmp'; \
-    mount --bind '$DEVICE_TMP' '$ROOTFS_DIR/data/local/tmp' 2>/dev/null || true; \
-    chroot '$ROOTFS_DIR' /bin/sh -l -c 'LD_LIBRARY_PATH=$GLIBC_LIB_DEVICE $GLIBC_LIB_DEVICE/ld-linux-armhf.so.3 --library-path $GLIBC_LIB_DEVICE $DEVICE_TMP/mirakc/bin/mirakc --version 2>&1 | head -2' || true; \
+#
+# If the rootfs already has /data/local/tmp bind-mounted (e.g. a mirakc session
+# is running), do NOT mount again: binding the same source over the existing
+# self-referential bind breaks path resolution inside the chroot, and the
+# umount below would then leave the running session without its bind mount.
+already_mounted=$($ADB shell "grep -q ' $ROOTFS_DIR/data/local/tmp ' /proc/mounts && echo yes || echo no" | tr -d '\r\n')
+if [ "$already_mounted" != "yes" ]; then
+    $ADB shell "mkdir -p '$ROOTFS_DIR/data/local/tmp'; \
+        mount --bind '$DEVICE_TMP' '$ROOTFS_DIR/data/local/tmp' 2>/dev/null || true"
+fi
+$ADB shell "chroot '$ROOTFS_DIR' /bin/sh -l -c 'LD_LIBRARY_PATH=$GLIBC_LIB_DEVICE $GLIBC_LIB_DEVICE/ld-linux-armhf.so.3 --library-path $GLIBC_LIB_DEVICE $DEVICE_TMP/mirakc/bin/mirakc --version 2>&1 | head -2' || true; \
     chroot '$ROOTFS_DIR' /bin/sh -l -c 'LD_LIBRARY_PATH=$GLIBC_LIB_DEVICE $GLIBC_LIB_DEVICE/ld-linux-armhf.so.3 --library-path $GLIBC_LIB_DEVICE $DEVICE_TMP/mirakc/bin/mirakc-arib --version 2>&1 | head -2' || true; \
-    chroot '$ROOTFS_DIR' /bin/sh -l -c 'LD_LIBRARY_PATH=$GLIBC_LIB_DEVICE $GLIBC_LIB_DEVICE/ld-linux-armhf.so.3 --library-path $GLIBC_LIB_DEVICE $DEVICE_TMP/mirakc/bin/mirakc-arib-tlv --version 2>&1 | head -2' || true; \
-    umount '$ROOTFS_DIR/data/local/tmp' 2>/dev/null || true" || true
+    chroot '$ROOTFS_DIR' /bin/sh -l -c 'LD_LIBRARY_PATH=$GLIBC_LIB_DEVICE $GLIBC_LIB_DEVICE/ld-linux-armhf.so.3 --library-path $GLIBC_LIB_DEVICE $DEVICE_TMP/mirakc/bin/mirakc-arib-tlv --version 2>&1 | head -2' || true" || true
+if [ "$already_mounted" != "yes" ]; then
+    $ADB shell "umount '$ROOTFS_DIR/data/local/tmp' 2>/dev/null || true"
+fi
