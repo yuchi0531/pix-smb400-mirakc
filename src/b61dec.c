@@ -534,12 +534,13 @@ static void usage(const char *prog) {
         "Example (11.84256 GHz = IF 1164560 kHz, BS7):\n"
         "  stop pix_airtuner\n"
         "  tuner-stream-bs-ng 0 2 1164560 0 | \\\n"
-        "  %s -key ***REMOVED-ACAS-KEY***\n\n"
-        "ACAS Master Key (all ARIB STD-B61 receivers):\n"
-        "  ***REMOVED-ACAS-KEY***\n\n"
+        "  %s -key <64-hex-acas-master-key>\n\n"
+        "ACAS Master Key:\n"
+        "  Extract it from /vendor/lib/libstationtv_lt_px_stream.so on the\n"
+        "  device, or read /data/local/tmp/.acas_key (deployed separately).\n"
+        "  Never commit the key to this repository.\n\n"
         "Notes:\n"
-        "  Stop pix_airtuner before use: stop pix_airtuner\n"
-        "  The master key is in /vendor/lib/libstationtv_lt_px_stream.so\n",
+        "  Stop pix_airtuner before use: stop pix_airtuner\n",
         prog, prog);
     exit(1);
 }
