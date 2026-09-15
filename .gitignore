@@ -27,7 +27,13 @@ boot/usb_boot_files/initramfs_patched.uimg
 /android-libs/
 
 # ---- User-supplied firmware / kernel image & extraction output ----
+# Local-only firmware helper: contains the Panasonic firmware decryption
+# password. NEVER commit (see also the boot/ flow in BOOT.md).
+get_kernel.sh
+scripts/get_kernel.sh
+# Firmware / kernel image and extraction output (not redistributable)
 kernel.img
+**/kernel.img
 _*.extracted/
 firmware_extracted/
 
