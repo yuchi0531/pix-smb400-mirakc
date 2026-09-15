@@ -31,6 +31,10 @@ Related components (NOT bundled — deployed/built separately)
                              — same release page (upstream mirakc/mirakc-arib).
   mirakc-arib-tlv (MIT OR Apache-2.0)
                              — same release page (yuchi0531/mirakc-arib-tlv).
+  miraview (MIT, Copyright (c) 2022 maeda577)
+                             — fetched from the smb400-armv7-v1 release
+                               (upstream https://github.com/maeda577/miraview
+                               v0.1.2).
   OpenSSL libssl/libcrypto — b61dec links against the device's own Android
                              system libssl/libcrypto at runtime (not
                              redistributed).

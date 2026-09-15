@@ -22,6 +22,14 @@ epg:
 server:
   addrs:
     - http: '0.0.0.0:40772'
+  # miraview Web UI (静的ファイル) を /miraview で配信する。
+  # ファイルは Release から make fetch-mirakc-armv7 で取得し、deploy で
+  # /data/local/tmp/mirakc/miraview へ配置される。
+  # アクセスは http://<device>:40772/miraview (末尾スラッシュなし。付けると404)。
+  mounts:
+    /miraview:
+      path: /data/local/tmp/mirakc/miraview
+      index: index.html
 
 resource:
   strings-yaml: /data/local/tmp/mirakc/strings.yml

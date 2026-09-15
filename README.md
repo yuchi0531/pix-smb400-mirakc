@@ -2,7 +2,7 @@
 
 PIX-SMB400（HiSilicon Hi3798CV200 搭載 Android TV）上で [mirakc](https://github.com/mirakc/mirakc)（Rust 製 Mirakurun 互換 PVR バックエンド）を実行し、地上波（ISDB-T）・BS（ISDB-S）・BS4K / BS8K（ISDB-S3）を受信するためのプロジェクトです。
 
-本リポジトリは BS4K / BS8K の **TLV passthrough 対応** を追加した [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K) フォークを使用します。ARMv7 (glibc) 版の mirakc バイナリは [smb400-armv7-v1 リリース](https://github.com/yuchi0531/mirakc-BS4K/releases/tag/smb400-armv7-v1) から `make fetch-mirakc-armv7` で取得するため、クロスビルド環境なしでもデプロイできます（リポジトリにはバイナリを含みません）。自分でビルドする場合は `make build-mirakc-armv7`。
+本リポジトリは BS4K / BS8K の **TLV passthrough 対応** を追加した [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K) フォークを使用します。ARMv7 (glibc) 版の mirakc バイナリと Web UI（miraview）は [smb400-armv7-v1 リリース](https://github.com/yuchi0531/mirakc-BS4K/releases/tag/smb400-armv7-v1) から `make fetch-mirakc-armv7` で取得するため、クロスビルド環境なしでもデプロイできます（リポジトリにはバイナリを含みません）。自分でビルドする場合は `make build-mirakc-armv7`。
 
 > 以前は Mirakurun（Node.js）を Alpine + chroot で動かす構成でしたが、現在は mirakc（Rust, glibc ARMv7）に移行しています。
 
@@ -54,7 +54,7 @@ Part 3: 起動・確認
 | USB メモリ | FAT32 フォーマット、1 GB 以上 |
 | ビルド環境 | `python3` + `pycryptodome`（ブートファイル用）、`mkimage` (u-boot-tools) または Docker（uimg 用）、`binwalk`（`kernel.img` 展開用）、`gcc-arm-linux-gnueabi` + `libc6-dev-armel-cross` + `libssl-dev`（チューナーバイナリのビルド用）。mirakc 本体はリリースから取得するためクロスビルド環境は不要 |
 | ADB | デバイスへの接続（`adb connect` / `adb devices` で認識済みであること）。全デプロイ系コマンドで必要 |
-| ネットワーク | mirakc バイナリ取得（`make fetch-mirakc-armv7`）に必要（`curl` を使用） |
+| ネットワーク | mirakc バイナリ・Web UI 取得（`make fetch-mirakc-armv7`）に必要（`curl` を使用） |
 | ACAS マスターキー | 64 文字の hex |
 
 ---
@@ -104,6 +104,9 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   ├── mirakc-arib                  GR / BS / CS(2K) 用フィルタ・ジョブ
 │   ├── mirakc-arib-tlv              BS4K / BS8K (TLV) 用ジョブ
 │   └── SHA256SUMS                   上記バイナリのチェックサム
+├── tmp/miraview/                    miraview Web UI の取得先（gitignore 対象・コミットされない）
+│   ├── index.html                   Web UI エントリポイント
+│   └── static/                      JS / CSS バンドル
 ├── include/openssl/                 b61dec ビルド用 OpenSSL 設定ヘッダ
 ├── scripts/
 │   ├── smb400-tuner.sh              mirakc チューナーコマンドラッパー
@@ -112,10 +115,11 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   ├── crash_guard.sh               クラッシュ監視ウォッチドッグ
 │   ├── write_usb_boot.sh            USBメモリへブートファイル3点を書き込む（要 sudo）
 │   ├── setup_proot.sh               Alpine rootfs + glibc-armhf 初回セットアップ
-│   ├── fetch_mirakc_armv7.sh        mirakc バイナリを GitHub Release から取得（通常はこちら）
+│   ├── fetch_mirakc_armv7.sh        mirakc バイナリ + miraview を GitHub Release から取得（通常はこちら）
 │   └── build_mirakc_armv7.sh        mirakc バイナリ再ビルドスクリプト（任意・上級者向け）
 ├── config/
 │   ├── config.yml                   mirakc 設定（server / channels / tuners / filters / jobs）
+│   ├── services.json                サービス定義（mirakc の EPG キャッシュ services.json として配置）
 │   └── strings.yml                  mirakc 日本語文字列定義
 └── src/                             バイナリの C ソースコード（make build-bins でビルド）
     ├── b61dec.c                     ACAS BS4K / BS8K デスクランブラー（ARIB STD-B61 / AES）
@@ -132,7 +136,8 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 |------|------|
 | `/data/local/tmp/mirakc/bin/` | mirakc / mirakc-arib / mirakc-arib-tlv |
 | `/data/local/tmp/mirakc/` | `config.yml` / `strings.yml` |
-| `/data/local/tmp/mirakc/epg/` | EPG キャッシュ |
+| `/data/local/tmp/mirakc/epg/` | EPG キャッシュ（`services.json` など） |
+| `/data/local/tmp/mirakc/miraview/` | miraview Web UI（`server.mounts` で `/miraview` として配信） |
 | `/data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/` | glibc ランタイム（`make setup-runtime` で配備） |
 | `/data/local/tmp/mirakc-root/` | Alpine rootfs |
 | `/data/local/tmp/mirakc.log` | ログ |
@@ -296,15 +301,15 @@ make build-bins ADB_TARGET=<デバイスのIPアドレス>:5555
 
 ---
 
-### Step 5: mirakc バイナリを用意する（通常は何もしなくてよい）
+### Step 5: mirakc バイナリと Web UI を用意する（通常は何もしなくてよい）
 
-ARMv7 (glibc) 版の mirakc 3バイナリはリポジトリに含まれません。デプロイ時に `make fetch-mirakc-armv7` が GitHub Release（[smb400-armv7-v1](https://github.com/yuchi0531/mirakc-BS4K/releases/tag/smb400-armv7-v1)）から `tmp/mirakc-armv7/` へ自動取得し、SHA256 を検証します（**クロスビルド環境は不要**）。手動で先に取得する場合:
+ARMv7 (glibc) 版の mirakc 3バイナリと miraview Web UI はリポジトリに含まれません。デプロイ時に `make fetch-mirakc-armv7` が GitHub Release（[smb400-armv7-v1](https://github.com/yuchi0531/mirakc-BS4K/releases/tag/smb400-armv7-v1)）から `tmp/mirakc-armv7/` と `tmp/miraview/` へ自動取得し、SHA256 を検証します（**クロスビルド環境は不要**）。手動で先に取得する場合:
 
 ```sh
 make fetch-mirakc-armv7
 ```
 
-- 取得済みで SHA256 が一致していれば再ダウンロードはスキップされます（強制再取得は `FORCE=1 make fetch-mirakc-armv7`）。
+- 取得済みで SHA256 が一致していれば再ダウンロードはスキップされます（強制再取得は `FORCE=1 make fetch-mirakc-armv7`）。バイナリと miraview は独立に判定されます。
 - 通信できない環境では、自分でバイナリをビルドできます（任意・上級者向け）:
 
 ```sh
@@ -340,7 +345,7 @@ adb -s <デバイスのIPアドレス>:5555 shell \
 
 ### Step 7: mirakc をデプロイする
 
-PC 側の `tmp/mirakc-armv7/` にある mirakc バイナリ（`make fetch-mirakc-armv7` で取得。`make deploy-mirakc` 実行時には自動取得）と設定ファイルをデバイスへ転送します。
+PC 側の `tmp/mirakc-armv7/` にある mirakc バイナリと `tmp/miraview/` の Web UI（いずれも `make fetch-mirakc-armv7` で取得。`make deploy-mirakc` 実行時には自動取得）と設定ファイルをデバイスへ転送します。
 
 ```sh
 make deploy-mirakc ADB_TARGET=<デバイスのIPアドレス>:5555
@@ -351,10 +356,12 @@ make deploy-mirakc ADB_TARGET=<デバイスのIPアドレス>:5555
 - `tmp/mirakc-armv7/mirakc` / `mirakc-arib` / `mirakc-arib-tlv` → `/data/local/tmp/mirakc/bin/`
 - `config/config.yml` → `/data/local/tmp/mirakc/config.yml`
 - `config/strings.yml` → `/data/local/tmp/mirakc/strings.yml`
+- `config/services.json` → `/data/local/tmp/mirakc/epg/services.json`（起動時スキャンの省略に使用）
+- `tmp/miraview/` → `/data/local/tmp/mirakc/miraview/`（Web UI。`make push-webui` で単独更新も可能）
 
 mirakc の設定は `config/config.yml` です（`server.addrs` は `0.0.0.0:40772`、EPG キャッシュは `/data/local/tmp/mirakc/epg`）。`config/strings.yml` は `config.yml` の `resource.strings-yaml` から参照されます。
 
-> 設定やスクリプトを更新した場合は `make push-all` だけ再実行します（チューナーバイナリ + mirakc バイナリ + スクリプト + 設定を一括更新）。
+> 設定やスクリプトを更新した場合は `make push-all` だけ再実行します（チューナーバイナリ + mirakc バイナリ + スクリプト + 設定 + Web UI を一括更新）。
 
 > **注意（initramfs 再ビルドが必要なケース）**
 > `scripts/` 内のファイル（`smb400-tuner.sh`, `start_mirakc.sh`, `crash_guard.sh`, `stop_android_tv.sh`）を変更した場合、**起動のたびに initramfs 内の版が `/data/local/tmp/` へ上書きコピーされる**ため、`make push-scripts` の変更は再起動で元に戻ってしまいます。
@@ -455,6 +462,21 @@ curl -s http://<デバイスのIPアドレス>:40772/api/version
 
 EPGStation をセットアップする際の `mirakurunPath` は `http://<デバイスのIPアドレス>:40772/` を指定してください。
 
+## Web UI (miraview)
+
+mirakc 自体は Web UI を持たないため、静的 UI の [miraview](https://github.com/maeda577/miraview) を同梱・配信する構成にしています。
+`config/config.yml` の `server.mounts` が `/data/local/tmp/mirakc/miraview` を `/miraview` で配信します。
+
+```
+http://<デバイスのIPアドレス>:40772/miraview
+```
+
+- **末尾にスラッシュを付けないでください**（`/miraview/` は 404 になります）。
+- ファイルは `make fetch-mirakc-armv7` で GitHub Release から `tmp/miraview/` に取得され、`make deploy-mirakc`（または `make push-webui` / `make push-all`）でデバイスへ配置されます。
+- miraview は MIT ライセンス（Copyright (c) 2022 maeda577）です。詳細は [NOTICE](NOTICE) を参照してください。
+
+> mirakc は起動時に `server.mounts[].path` が存在しないと起動に失敗します。Web UI を使わない場合でも先に `make push-webui` を実行するか、`config.yml` から `mounts` を削除してください。
+
 ### BS8Kの受信について
 
 BS8K（左旋・ISDB-S3）にも対応しています。`config/config.yml` には次のエントリが含まれています。
@@ -488,20 +510,24 @@ ffplay http://<デバイスのIPアドレス>:40772/api/channels/BS4K/45280/stre
 地デジも BS と同じ **MULTI2**（B-CAS 方式, CA_system_id 0x0005）でスクランブルされているため、`smb400-tuner.sh` 内の **`b21dec`** がオンデバイス ACAS チップ経由でそのまま解除します（B-CAS カード不要）。
 チューナーは `tuner-stream-ng`（DMX 直接キャプチャ）を使い、`tuner-stream-ng | b21dec` を chroot 配下で実行して平文 MPEG-TS を出力します（mirakc の `service-filter` / `program-filter`（mirakc-arib）で処理）。
 
-`config/config.yml` の GR 一覧は **関東（東京）の物理チャンネル例**です。
+`config/config.yml` の GR 一覧は **Mirakurun サーバ（192.168.100.111）からインポートした関東（東京）の値**です。
 物理チャンネル割り当ては地域で異なるため、お住まいの地域に合わせて `channel`（13〜62）を変更してください。
-`services` は省略してあり、mirakc のサービススキャン（`scan-services` ジョブ）が各局を自動登録します。
+`services` は .111 の実測 SDT 由来のサービスIDが明示されており、起動時スキャンなしで登録されます。
 
-| name | type | channel(物理) |
-|------|------|---------------|
-| NHK総合 | GR | 27 |
-| NHK Eテレ | GR | 26 |
-| 日テレ | GR | 25 |
-| テレビ朝日 | GR | 24 |
-| TBS | GR | 22 |
-| テレビ東京 | GR | 23 |
-| フジテレビ | GR | 21 |
-| TOKYO MX | GR | 16 |
+| name | type | channel(物理) | services |
+|------|------|---------------|----------|
+| Ｊ：ＣＯＭテレビ | GR | 13 | 23656, 23657 |
+| ＴＯＫＹＯ　ＭＸ | GR | 16 | 23608-23610, 23992, 23993 |
+| Ｊ：ＣＯＭチャンネル | GR | 18 | 27768-27770 |
+| フジテレビ | GR | 21 | 1056-1058, 1440 |
+| ＴＢＳ | GR | 22 | 1048, 1049, 1183, 1432 |
+| テレビ東京 | GR | 23 | 1072-1074, 1456 |
+| テレビ朝日 | GR | 24 | 1064-1066, 1448 |
+| 日テレ | GR | 25 | 1040, 1041, 1424 |
+| ＮＨＫＥテレ・東京 | GR | 26 | 1032-1034, 1416 |
+| ＮＨＫ総合・東京 | GR | 27 | 1024, 1025, 1408 |
+| チバテレ | GR | 30 | 27704-27706, 28088 |
+| テレ玉 | GR | 32 | 29752-29754, 30136 |
 
 ```sh
 # 物理チャンネル 27（関東 NHK総合）を受信して先頭を確認
@@ -537,7 +563,7 @@ ffprobe nhkbs.ts          # mpeg2video 1440x1080 + aac が見えれば復号成�
 ffplay  "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/stream"
 ```
 
-110 度 CS（ISDB-S 2K 相当）も BS と同じ経路（`tuner-stream-bs-ng` mode=1 → `b21dec`）で受信します。`config/config.yml` にはスキャン用のプレースホルダが含まれます（`make test-cs` が CS/ND02 を叩きます）。
+110 度 CS（ISDB-S 2K 相当）も BS と同じ経路（`tuner-stream-bs-ng` mode=1 → `b21dec`）で受信します。`config/config.yml` には .111 からインポートした CS チャンネル（ND02〜ND24、実測 services 付き）が含まれます（`make test-cs` が CS/ND02 を叩きます）。
 
 | name | type | channel |
 |------|------|---------|
@@ -566,15 +592,16 @@ EPGStation をセットアップする際に `mirakurunPath` を `http://<デバ
 
 ## サービス登録と EPG について
 
-初回起動後、mirakc は `config.yml` の `channels` を順次チューニングし、`scan-services` ジョブでサービスを自動登録します。
-**全チャンネルが揃うまで数分**かかります（1 チューナーで順番にチューニングするため）。
+チャンネル・サービスは Mirakurun サーバ（`192.168.100.111`）からインポート済みです。`config/config.yml` の `channels` と、`make deploy-mirakc` で `/data/local/tmp/mirakc/epg/services.json` に配置されるサービス定義（`config/services.json`）により、**初回からサービスが登録された状態**で起動します。
 
 ```sh
 # 登録されたサービスを確認
 curl -s http://<デバイスのIPアドレス>:40772/api/services | python3 -m json.tool
 ```
 
-- サービスが登録されると、mirakc の EPG ジョブ（`update-schedules` / `sync-clocks` 等）が動き出します。ジョブは既定スケジュールで実行されます（`scan-services`: 08:01 / 20:01、`sync-clocks`: 08:11 / 20:11、`update-schedules`: 08:21 / 20:21）。
+- 起動スクリプト（`start_mirakc.sh`）は `MIRAKC_EPG_FRESH_PERIOD=30d` を設定します。EPG キャッシュ（`services.json` 等）の mtime が 30 日以内なら、**起動時のサービススキャンをスキップ**します（`scan-services` の初回実行が走らない）。
+- 定期ジョブは通常どおり動きます（`scan-services`: 08:01 / 20:01、`sync-clocks`: 08:11 / 20:11、`update-schedules`: 08:21 / 20:21）。
+- 新しいチャンネルを追加した場合など、明示的にスキャンさせたいときは古い `services.json` を削除するか、mtime を更新してください（次回起動時にスキャンします）。
 - トランスポンダの初回チューニング時、ウォームアップで稀にサービスを取り逃すことがあります（ストリーム先頭の `7f ff`）。
   その場合は `make start` で再起動すれば取得されます。
 
@@ -598,11 +625,12 @@ curl -s http://<デバイスのIPアドレス>:40772/api/services | python3 -m j
 
 ```sh
 make build-bins          # チューナー/デコーダバイナリをビルド
-make fetch-mirakc-armv7  # mirakc 3バイナリを GitHub Release から取得（通常はこちら）
+make fetch-mirakc-armv7  # mirakc 3バイナリ + miraview Web UI を GitHub Release から取得（通常はこちら）
 make build-mirakc-armv7  # mirakc 3バイナリを ARMv7 向けに再ビルド（任意）
-make deploy-mirakc       # mirakc 本体・設定をデプロイ
+make deploy-mirakc       # mirakc 本体・設定・Web UI をデプロイ
 make setup-runtime       # Alpine rootfs + glibc ランタイムを構築
-make push-all            # チューナーバイナリ・mirakc バイナリ・スクリプト・設定を更新
+make push-all            # チューナーバイナリ・mirakc バイナリ・スクリプト・設定・Web UI を更新
+make push-webui          # miraview Web UI のみ更新
 make start               # mirakc 起動
 make stop                # 停止（チューナー・デスクランブラーも含む）
 make restart             # 再起動
