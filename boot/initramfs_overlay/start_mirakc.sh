@@ -151,6 +151,10 @@ fi
 # symlink above plus LD_LIBRARY_PATH make it run inside the musl chroot.
 chroot "$ROOTFS" /bin/sh -l -c "
     export LD_LIBRARY_PATH=/data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf
+    # チャンネル/サービスは Mirakurun(.111)からインポート済みのため、
+    # キャッシュが新鮮な間(30日)は起動時スキャンをスキップする。
+    # 定期ジョブ(08:01/20:01)は通常どおり実行される。
+    export MIRAKC_EPG_FRESH_PERIOD=30d
     cd /data/local/tmp/mirakc
     exec /data/local/tmp/mirakc/bin/mirakc -c /data/local/tmp/mirakc/config.yml
 " >> "$LOG" 2>&1
