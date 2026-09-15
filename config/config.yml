@@ -22,6 +22,15 @@ epg:
 server:
   addrs:
     - http: '0.0.0.0:40772'
+  # mirakc-webui (静的SPA) を /www で配信する。
+  # ファイルは make fetch-webui (GitHub Release) で取得し、deploy で
+  # /data/local/tmp/mirakc/www へ配置される。
+  # アクセス: http://<device>:40772/www （末尾スラッシュ無し。mirakc の
+  # mounts 仕様で /www/ は 404 になる）
+  mounts:
+    /www:
+      path: /data/local/tmp/mirakc/www
+      index: index.html
 
 resource:
   strings-yaml: /data/local/tmp/mirakc/strings.yml

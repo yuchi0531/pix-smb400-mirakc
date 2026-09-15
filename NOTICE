@@ -31,6 +31,10 @@ Related components (NOT bundled — deployed/built separately)
                              — same release page (upstream mirakc/mirakc-arib).
   mirakc-arib-tlv (MIT OR Apache-2.0)
                              — same release page (yuchi0531/mirakc-arib-tlv).
+  mirakc-webui — fetched from the smb400-webui-v1 release page of
+                 https://github.com/yuchi0531/mirakc-webui (not included
+                 in this repository). No license is declared for this
+                 project yet; see the repository for the current terms.
   OpenSSL libssl/libcrypto — b61dec links against the device's own Android
                              system libssl/libcrypto at runtime (not
                              redistributed).
