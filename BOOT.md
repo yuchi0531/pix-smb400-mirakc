@@ -6,9 +6,9 @@ USB メモリには以下の 3 ファイルが必要です。いずれも `boot/
 
 | ファイル | 役割 | 生成方法 |
 |----------|------|----------|
-| `bootargs.bin` | u-boot 環境変数ブロック（`androidboot.selinux=permissive` を注入） | `make_usb_boot.py` |
-| `root_rsa_pub_crc.bin` | 外部 RSA 公開鍵。BootROM がこの鍵で `bootargs.bin` を検証する | `make_usb_boot.py` |
-| `initramfs_patched.uimg` | カスタム initramfs（ADB・DHCP・mirakc 自動起動を組み込み） | `build_initramfs.sh` |
+| `bootargs.bin` | u-boot 環境変数ブロック（`androidboot.selinux=permissive` を注入） | `make_usb_boot.py` → `boot/usb_boot_files/` |
+| `root_rsa_pub_crc.bin` | 外部 RSA 公開鍵。BootROM がこの鍵で `bootargs.bin` を検証する | `make_usb_boot.py` → `boot/usb_boot_files/` |
+| `initramfs_patched.uimg` | カスタム initramfs（ADB・DHCP・mirakc 自動起動を組み込み） | `build_initramfs.sh` → `boot/` |
 
 ---
 
@@ -16,25 +16,21 @@ USB メモリには以下の 3 ファイルが必要です。いずれも `boot/
 
 ### 1. bootargs.bin / root_rsa_pub_crc.bin を生成する
 
-要件: Docker（または Python 3 + `pycryptodome`）
+要件: Python 3 + `pycryptodome`（Docker は不要）
 
 ```sh
-cd boot
-
-docker run --rm \
-  -v "$(pwd):/usb_boot" \
-  python:3.11-slim bash -c "
-pip install pycryptodome -q
-cd /usb_boot && python3 make_usb_boot.py
-"
-cd ..
+python3 boot/make_usb_boot.py
 ```
 
-→ `boot/bootargs.bin` と `boot/root_rsa_pub_crc.bin`（および `rsa_key.pem`）が生成されます。
+→ `boot/usb_boot_files/` に `bootargs.bin`・`root_rsa_pub_crc.bin`・`rsa_key.pem` が生成されます。
+
+> Docker を使いたい場合は従来通り `python:3.11-slim` コンテナ内で `cd boot && python3 make_usb_boot.py` を実行しても構いません
+> （この場合も出力先は `boot/usb_boot_files/` です）。
+> `boot/usb_boot_files/rsa_key.pem` が既にあればその鍵を再利用するため、再実行しても同じ `root_rsa_pub_crc.bin` が生成されます。
 
 ### 2. initramfs_patched.uimg をビルドする
 
-要件: Docker と、用意した `kernel.img`
+要件: `mkimage`（u-boot-tools）**または** Docker、および用意した `kernel.img`
 
 ```sh
 # kernel.img から initramfs を取り出す
@@ -45,23 +41,49 @@ binwalk -e kernel.img
 bash boot/build_initramfs.sh /path/to/_kernel.img.extracted/988000
 ```
 
+`mkimage` が PATH に無い場合は Docker にフォールバックします。`MKIMAGE` 環境変数で明示指定も可能です:
+
+```sh
+MKIMAGE=/path/to/mkimage bash boot/build_initramfs.sh /path/to/_kernel.img.extracted/988000
+```
+
+Docker も root 権限も無い環境では、u-boot-tools の deb を非 root で展開して使えます:
+
+```sh
+mkdir -p /tmp/u-boot-tools && cd /tmp
+URL=$(apt-get download --print-uris u-boot-tools | sed -n "s/^'\(http[^']*\)'.*/\1/p" | head -1)
+curl -fL -o u-boot-tools.deb "$URL"
+dpkg-deb -x u-boot-tools.deb /tmp/u-boot-tools
+PATH=/tmp/u-boot-tools/usr/bin:$PATH bash boot/build_initramfs.sh /path/to/_kernel.img.extracted/988000
+```
+
 → `boot/initramfs_patched.uimg` が生成されます。
 
 ### 3. USB メモリにコピーする
+
+3 ファイルをまとめて書き込むスクリプト `scripts/write_usb_boot.sh` を使うのが簡単です
+（FAT32 フォーマットとラベル付けは事前に手動で行ってください）:
 
 ```sh
 # FAT32 でフォーマット（PIXBOOT というラベルを付ける）
 sudo mkfs.fat -F 32 -n PIXBOOT /dev/sdX1
 
+# 3ファイルを書き込み（md5 検証・アンマウントまで自動）
+sudo bash scripts/write_usb_boot.sh /dev/sdX1
+```
+
+手動でコピーする場合:
+
+```sh
 # マウント（自動マウントされない場合）
 sudo mkdir -p /mnt/PIXBOOT
 sudo mount -o uid=$(id -u),gid=$(id -g) /dev/sdX1 /mnt/PIXBOOT
 sudo chown $USER:$USER /mnt/PIXBOOT
 
 # コピー
-cp boot/bootargs.bin           /mnt/PIXBOOT/
-cp boot/root_rsa_pub_crc.bin   /mnt/PIXBOOT/
-cp boot/initramfs_patched.uimg /mnt/PIXBOOT/
+cp boot/usb_boot_files/bootargs.bin         /mnt/PIXBOOT/
+cp boot/usb_boot_files/root_rsa_pub_crc.bin /mnt/PIXBOOT/
+cp boot/initramfs_patched.uimg              /mnt/PIXBOOT/
 
 # アンマウントして取り出す
 sudo umount /mnt/PIXBOOT
@@ -123,6 +145,10 @@ boot/
 ├── make_usb_boot.py                bootargs.bin / root_rsa_pub_crc.bin 生成スクリプト
 ├── patch_init.py                   init バイナリパッチスクリプト
 ├── build_initramfs.sh              initramfs_patched.uimg ビルドスクリプト
+├── usb_boot_files/                 生成物（gitignore 対象・コミットされない）
+│   ├── bootargs.bin                u-boot env ブロック
+│   ├── root_rsa_pub_crc.bin        RSA 公開鍵 + CRC32
+│   └── rsa_key.pem                 RSA 秘密鍵（e=3）
 └── initramfs_overlay/              initramfs に追加・置換されるファイル
     ├── default.prop                ro.debuggable=1 / ro.adb.secure=0
     ├── dhclient.conf               DHCP クライアント設定
@@ -136,25 +162,39 @@ boot/
         └── logd.rc                 logd を無効化（このカーネルでは capset() で EPERM）
 ```
 
+関連スクリプト（`scripts/`）:
+
+```
+scripts/
+└── write_usb_boot.sh               USB メモリへ3ファイルを書き込む（要 sudo）
+```
+
 ビルド時に生成されるファイル（リポジトリには含まれません）:
 
 | ファイル | サイズ | 内容 |
 |----------|--------|------|
-| `bootargs.bin` | 65,536 bytes | u-boot env ブロック（CRC32 検証済み） |
-| `root_rsa_pub_crc.bin` | 264 bytes | RSA モジュラス (256 B) + 指数 (4 B) + CRC32 (4 B) |
-| `rsa_key.pem` | — | RSA 秘密鍵（e=3）。紛失すると再生成が必要。漏洩注意 |
-| `initramfs_patched.uimg` | — | カスタム initramfs |
+| `boot/usb_boot_files/bootargs.bin` | 65,536 bytes | u-boot env ブロック（CRC32 検証済み） |
+| `boot/usb_boot_files/root_rsa_pub_crc.bin` | 264 bytes | RSA モジュラス (256 B) + 指数 (4 B) + CRC32 (4 B) |
+| `boot/usb_boot_files/rsa_key.pem` | — | RSA 秘密鍵（e=3）。紛失すると再生成が必要。漏洩注意 |
+| `boot/initramfs_patched.uimg` | — | カスタム initramfs |
 
 ---
 
 ## 3. bootargs.bin / root_rsa_pub_crc.bin の生成
 
-`boot/rsa_key.pem` が存在すれば既存の鍵を再利用します（USB Boot ピン認証に影響なし）。
+`boot/usb_boot_files/rsa_key.pem` が存在すれば既存の鍵を再利用します（USB Boot ピン認証に影響なし）。
 `rsa_key.pem` がなければ新規に鍵ペアを生成します。
 
-**要件:** Docker または Python 3 + `pycryptodome`
+**要件:** Python 3 + `pycryptodome`（Docker は不要）
 
-### Docker を使う場合（推奨）
+### Python を直接使う場合（推奨）
+
+```sh
+pip install pycryptodome
+python3 boot/make_usb_boot.py
+```
+
+### Docker を使う場合
 
 ```sh
 cd boot
@@ -167,21 +207,13 @@ cd /usb_boot && python3 make_usb_boot.py
 "
 ```
 
-### Python を直接使う場合
-
-```sh
-pip install pycryptodome
-cd boot
-python3 make_usb_boot.py
-```
-
-生成されるファイル:
+生成されるファイル（出力先は `boot/usb_boot_files/`）:
 
 | ファイル | サイズ | 内容 |
 |----------|--------|------|
-| `bootargs.bin` | 65,536 bytes | u-boot env ブロック（CRC32 検証済み） |
-| `root_rsa_pub_crc.bin` | 264 bytes | RSA モジュラス (256 B) + 指数 (4 B) + CRC32 (4 B) |
-| `rsa_key.pem` | — | RSA 秘密鍵（e=3）。紛失すると再生成が必要 |
+| `boot/usb_boot_files/bootargs.bin` | 65,536 bytes | u-boot env ブロック（CRC32 検証済み） |
+| `boot/usb_boot_files/root_rsa_pub_crc.bin` | 264 bytes | RSA モジュラス (256 B) + 指数 (4 B) + CRC32 (4 B) |
+| `boot/usb_boot_files/rsa_key.pem` | — | RSA 秘密鍵（e=3）。紛失すると再生成が必要 |
 
 > `rsa_key.pem` を変更した場合は USB メモリ上の `root_rsa_pub_crc.bin` も更新してください。
 
@@ -194,8 +226,15 @@ python3 make_usb_boot.py
 
 ### 前提
 
-- **Docker** が使用可能なこと
+- **`mkimage` (u-boot-tools) または Docker** が使用可能なこと
 - **kernel.img** が手元にあること
+
+```sh
+# Debian/Ubuntu で mkimage を入れる場合
+sudo apt install u-boot-tools
+```
+
+> root 権限が無い場合は、クイックスタート「2. initramfs_patched.uimg をビルドする」の u-boot-tools deb 展開手順を参照してください。
 
 用意した `kernel.img` から initramfs cpio を取り出します:
 
@@ -244,7 +283,22 @@ ls -lh boot/initramfs_patched.uimg
 
 ## 5. USB メモリの更新
 
-ビルド後は USB メモリを更新します。
+ビルド後は USB メモリを更新します。3 ファイルをまとめて書き込むには `scripts/write_usb_boot.sh` を使います:
+
+```sh
+# FAT32 でフォーマット（初回のみ・ラベル PIXBOOT）
+sudo mkfs.fat -F 32 -n PIXBOOT /dev/sdX1
+
+# 3ファイルを書き込み（マウント・md5 検証・アンマウントまで自動）
+sudo bash scripts/write_usb_boot.sh /dev/sdX1
+```
+
+| オプション | 動作 |
+|------------|------|
+| `--force` | ラベルが PIXBOOT でない / FAT32 でなくても続行 |
+| `--yes` | 確認プロンプトをスキップ（`--force` と併用推奨） |
+
+手動でコピーする場合:
 
 ```sh
 # マウント（自動マウントされない場合）
@@ -253,9 +307,9 @@ sudo mount -o uid=$(id -u),gid=$(id -g) /dev/sdX1 /mnt/PIXBOOT
 sudo chown $USER:$USER /mnt/PIXBOOT
 
 # コピー
-cp boot/bootargs.bin           /mnt/PIXBOOT/
-cp boot/root_rsa_pub_crc.bin   /mnt/PIXBOOT/
-cp boot/initramfs_patched.uimg /mnt/PIXBOOT/
+cp boot/usb_boot_files/bootargs.bin         /mnt/PIXBOOT/
+cp boot/usb_boot_files/root_rsa_pub_crc.bin /mnt/PIXBOOT/
+cp boot/initramfs_patched.uimg              /mnt/PIXBOOT/
 
 # アンマウントして取り出す
 sudo umount /mnt/PIXBOOT

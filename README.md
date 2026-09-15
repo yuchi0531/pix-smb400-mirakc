@@ -52,7 +52,7 @@ Part 3: 起動・確認
 | 作業コピー | 本リポジトリ（`git clone https://github.com/yuchi0531/pix-smb400-mirakc`）。以降のコマンドは clone したディレクトリのルートで実行 |
 | PIX-SMB400 本体 | USB ブートピンにアクセスできる状態 |
 | USB メモリ | FAT32 フォーマット、1 GB 以上 |
-| ビルド環境 | Docker + `python3`（ブートファイル用）、`binwalk`（`kernel.img` 展開用）、`gcc-arm-linux-gnueabi` + `libc6-dev-armel-cross` + `libssl-dev`（チューナーバイナリのビルド用）。mirakc 本体はリリースから取得するためクロスビルド環境は不要 |
+| ビルド環境 | `python3` + `pycryptodome`（ブートファイル用）、`mkimage` (u-boot-tools) または Docker（uimg 用）、`binwalk`（`kernel.img` 展開用）、`gcc-arm-linux-gnueabi` + `libc6-dev-armel-cross` + `libssl-dev`（チューナーバイナリのビルド用）。mirakc 本体はリリースから取得するためクロスビルド環境は不要 |
 | ADB | デバイスへの接続（`adb connect` / `adb devices` で認識済みであること）。全デプロイ系コマンドで必要 |
 | ネットワーク | mirakc バイナリ取得（`make fetch-mirakc-armv7`）に必要（`curl` を使用） |
 | ACAS マスターキー | 64 文字の hex |
@@ -72,7 +72,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 - `adb` — デバイスとのバイナリ転送・android-libs 取得
 - `python3-pycryptodome` — `make_usb_boot.py`（`bootargs.bin` / RSA 鍵生成）
 - `git` / `curl` — mirakc バイナリ（GitHub Release）の取得や、任意の再ビルド時のクローン
-- **docker-in-docker** feature — `build_initramfs.sh` / `make_usb_boot.py` がコンテナ内で `docker run` を使うため有効化済み
+- **docker-in-docker** feature — `build_initramfs.sh` / `make_usb_boot.py` がコンテナ内で `docker run` を使う場合のため有効化済み（`mkimage` が使える環境では docker なしでもビルド可能）
 
 > 以降の手順に出てくる `sudo apt install ...`（`gcc-arm-linux-gnueabi`・`libc6-dev-armel-cross`・`libssl-dev`・`binwalk` 等）は、
 > Dev Container を使う場合はインストール済みのためスキップできます。
@@ -95,6 +95,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   ├── make_usb_boot.py             bootargs.bin / root_rsa_pub_crc.bin 生成スクリプト
 │   ├── patch_init.py                init バイナリパッチスクリプト（SELinux bypass 等）
 │   ├── build_initramfs.sh           initramfs_patched.uimg ビルドスクリプト
+│   ├── usb_boot_files/              生成物: bootargs.bin / root_rsa_pub_crc.bin / rsa_key.pem（gitignore 対象）
 │   └── initramfs_overlay/           initramfs オーバーレイファイル
 │       └── start_mirakc.sh          mirakc 自動起動スクリプト（電源 ON 時に実行される版）
 ├── bin/                             ビルドしたチューナーバイナリの出力先（make build-bins で生成）
@@ -109,6 +110,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   ├── start_mirakc.sh              mirakc 起動スクリプト（chroot + glibc ランタイム）
 │   ├── stop_android_tv.sh           Android TV 不要プロセス停止
 │   ├── crash_guard.sh               クラッシュ監視ウォッチドッグ
+│   ├── write_usb_boot.sh            USBメモリへブートファイル3点を書き込む（要 sudo）
 │   ├── setup_proot.sh               Alpine rootfs + glibc-armhf 初回セットアップ
 │   ├── fetch_mirakc_armv7.sh        mirakc バイナリを GitHub Release から取得（通常はこちら）
 │   └── build_mirakc_armv7.sh        mirakc バイナリ再ビルドスクリプト（任意・上級者向け）
@@ -173,17 +175,24 @@ USB メモリに必要な 3 ファイル（`bootargs.bin` / `root_rsa_pub_crc.bi
 `initramfs_patched.uimg` のビルドには、[Step 0](#step-0-kernelimg-を入手して展開する) で取り出した initramfs cpio を使用します。
 
 ```sh
-# 1) bootargs.bin / root_rsa_pub_crc.bin を生成
-cd boot
-docker run --rm -v "$(pwd):/usb_boot" python:3.11-slim bash -c "
-pip install pycryptodome -q
-cd /usb_boot && python3 make_usb_boot.py
-"
+# 1) bootargs.bin / root_rsa_pub_crc.bin を生成（Docker 不要）
+#    要件: python3 + pycryptodome
+python3 boot/make_usb_boot.py
+# → boot/usb_boot_files/ に bootargs.bin / root_rsa_pub_crc.bin / rsa_key.pem が生成される
 
 # 2) Step 0 で取り出した initramfs cpio から initramfs_patched.uimg をビルド
-cd ..
+#    要件: mkimage (u-boot-tools) または Docker
 bash boot/build_initramfs.sh _kernel.img.extracted/988000
 ```
+
+> `mkimage` が無い場合（root 権限なしで u-boot-tools を入手する例）:
+> ```sh
+> mkdir -p /tmp/u-boot-tools && cd /tmp
+> URL=$(apt-get download --print-uris u-boot-tools | sed -n "s/^'\(http[^']*\)'.*/\1/p" | head -1)
+> curl -fL -o u-boot-tools.deb "$URL"
+> dpkg-deb -x u-boot-tools.deb /tmp/u-boot-tools
+> cd - && PATH=/tmp/u-boot-tools/usr/bin:$PATH bash boot/build_initramfs.sh _kernel.img.extracted/988000
+> ```
 
 **1-2. FAT32 でフォーマットする**
 
@@ -191,21 +200,26 @@ bash boot/build_initramfs.sh _kernel.img.extracted/988000
 sudo mkfs.fat -F 32 -n PIXBOOT /dev/sdX1
 ```
 
-**1-3. USB メモリをマウントする**
+**1-3. ブートファイルを USB メモリにコピーする**
+
+`scripts/write_usb_boot.sh` がマウント・コピー・md5 検証・アンマウントまで行います:
+
+```sh
+sudo bash scripts/write_usb_boot.sh /dev/sdX1
+```
+
+手動でコピーする場合:
 
 ```sh
 sudo mkdir -p /mnt/PIXBOOT
 sudo mount -o uid=$(id -u),gid=$(id -g) /dev/sdX1 /mnt/PIXBOOT
 sudo chown $USER:$USER /mnt/PIXBOOT
-```
 
-**1-4. ブートファイルを USB メモリにコピーする**
+cp boot/usb_boot_files/bootargs.bin         /mnt/PIXBOOT/
+cp boot/usb_boot_files/root_rsa_pub_crc.bin /mnt/PIXBOOT/
+cp boot/initramfs_patched.uimg              /mnt/PIXBOOT/
 
-```sh
-# 手動でコピー
-cp boot/bootargs.bin           /mnt/PIXBOOT/
-cp boot/root_rsa_pub_crc.bin   /mnt/PIXBOOT/
-cp boot/initramfs_patched.uimg /mnt/PIXBOOT/
+sudo umount /mnt/PIXBOOT
 ```
 
 USB メモリのルートに以下の 3 ファイルが置かれていれば OK です:
@@ -215,12 +229,6 @@ PIXBOOT/
 ├── bootargs.bin
 ├── root_rsa_pub_crc.bin
 └── initramfs_patched.uimg
-```
-
-アンマウントして USB メモリを取り出します。
-
-```sh
-sudo umount /mnt/PIXBOOT
 ```
 
 ---

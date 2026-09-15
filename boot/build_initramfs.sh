@@ -7,7 +7,9 @@
 #   <firmware_cpio>: kernel.img を binwalk で展開して取り出した initramfs cpio ファイル
 #                   例: _kernel.img.extracted/988000
 #
-# 必要なもの: docker, python3
+# 必要なもの: mkimage (u-boot-tools) または docker, python3
+#   mkimage が PATH に無い場合は docker を使う。MKIMAGE 環境変数で明示指定も可能:
+#     MKIMAGE=/path/to/mkimage bash boot/build_initramfs.sh <firmware_cpio>
 # 出力: boot/initramfs_patched.uimg（上書き）
 #
 # 詳細は BOOT.md を参照。
@@ -121,14 +123,32 @@ find "$WORK_DIR" -name "*.sh"  | xargs chmod 755
 chmod 755 "$WORK_DIR/init"
 chmod 644 "$WORK_DIR/default.prop" "$WORK_DIR/dhclient.conf"
 
-# --- 5. Docker で cpio + uimg をビルド ---
-echo "[*] Docker で uimg をビルド中..."
+# --- 5. cpio + uimg をビルド ---
+echo "[*] uimg をビルド中..."
 mkdir -p "$(dirname "$OUT")"
 
-docker run --rm \
-    -v "$WORK_DIR:/initramfs_work" \
-    -v "$(dirname "$OUT"):/out" \
-    ubuntu:22.04 bash -c "
+MKIMAGE="${MKIMAGE:-$(command -v mkimage || true)}"
+
+if [ -n "$MKIMAGE" ]; then
+    # --- 5a. ホストの mkimage で直接ビルド ---
+    echo "[*] mkimage: $MKIMAGE"
+    # アーカイブ対象ディレクトリの外に出力する（内側だと自分自身を巻き込む）
+    GZ="${WORK_DIR%/}.cpio.gz"
+    rm -f "$GZ"
+    (cd "$WORK_DIR" && find . | sort | cpio -o -H newc 2>/dev/null | gzip -9 > "$GZ")
+    "$MKIMAGE" -A arm -O linux -T ramdisk -C gzip \
+        -a 0x04000000 -e 0x04000000 \
+        -n 'patched-initramfs' \
+        -d "$GZ" \
+        "$OUT"
+    rm -f "$GZ"
+elif command -v docker >/dev/null 2>&1; then
+    # --- 5b. docker で cpio + uimg をビルド ---
+    echo "[*] Docker で uimg をビルド中..."
+    docker run --rm \
+        -v "$WORK_DIR:/initramfs_work" \
+        -v "$(dirname "$OUT"):/out" \
+        ubuntu:22.04 bash -c "
 apt-get update -qq && apt-get install -y -qq u-boot-tools cpio gzip 2>/dev/null
 cd /initramfs_work
 find . | sort | cpio -o -H newc 2>/dev/null | gzip -9 > /tmp/initramfs_patched.cpio.gz
@@ -140,6 +160,10 @@ mkimage -A arm -O linux -T ramdisk -C gzip \
 echo '[+] ビルド完了'
 ls -lh /out/initramfs_patched.uimg
 "
+else
+    echo "[!] mkimage が見つかりません。'sudo apt install u-boot-tools' するか、docker を入れてください" >&2
+    exit 1
+fi
 
 echo ""
 echo "[+] 完了: $OUT"
