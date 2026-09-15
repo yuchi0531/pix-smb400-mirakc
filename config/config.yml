@@ -27,229 +27,252 @@ resource:
   strings-yaml: /data/local/tmp/mirakc/strings.yml
 
 channels:
+  # Mirakurun (192.168.100.111) の channels.yml から変換
+  #   scripts/import_mirakurun_channels.py / 元データ: tmp/channels-111/api-channels.json
+  # channel 値の解釈は smb400-tuner.sh が行う。復号はすべて同スクリプト内で完了する。
   # --- GR (ISDB-T 地上波) ---
-  # 地デジも MULTI2(B-CAS) スクランブルのため smb400-tuner.sh 内の b21dec で解除する。
-  # channel = 物理チャンネル番号(13-62)。IF = 473143 + (ch-13)*6000 kHz。
-  # 【重要】物理チャンネル割り当ては地域で異なる。以下は関東(東京)の例。お住まいの
-  #         地域に合わせて channel 番号を変更すること。services は省略し、
-  #         サービススキャンに各局の自動登録を任せる。
-  # ※ 本機は衛星のみで未検証。地上波アンテナ接続後、チップが地デジ EMM で Kw を取得
-  #    すれば復号可能（一度も地上波を受信していないと当初は視聴不可になり得る）。
-  - name: 'NHK総合'
+  # channel = 物理チャンネル番号 (13-62)。services は .111 の実測 SDT 由来。
+  - name: "Ｊ：ＣＯＭテレビ"
     type: GR
-    channel: '27'
-  - name: 'NHK Eテレ'
+    channel: "13"
+    services: [23656, 23657]
+  - name: "ＴＯＫＹＯ　ＭＸ"
     type: GR
-    channel: '26'
-  - name: '日テレ'
+    channel: "16"
+    services: [23608, 23609, 23610, 23992, 23993]
+  - name: "Ｊ：ＣＯＭチャンネル"
     type: GR
-    channel: '25'
-  - name: 'テレビ朝日'
+    channel: "18"
+    services: [27768, 27769, 27770]
+  - name: "フジテレビ"
     type: GR
-    channel: '24'
-  - name: 'TBS'
+    channel: "21"
+    services: [1056, 1057, 1058, 1440]
+  - name: "ＴＢＳ"
     type: GR
-    channel: '22'
-  - name: 'テレビ東京'
+    channel: "22"
+    services: [1048, 1049, 1183, 1432]
+  - name: "テレビ東京"
     type: GR
-    channel: '23'
-  - name: 'フジテレビ'
+    channel: "23"
+    services: [1072, 1073, 1074, 1456]
+  - name: "テレビ朝日"
     type: GR
-    channel: '21'
-  - name: 'TOKYO MX'
+    channel: "24"
+    services: [1064, 1065, 1066, 1448]
+  - name: "日テレ"
     type: GR
-    channel: '16'
-
-  # --- BS4K (ISDB-S3, 衛星4K) ---
-  # b61dec が復号済み TLV を出力し、mirakc は passthrough する。services には
-  # 実サービスID(SDT 由来)を明示する。
-  - name: 'BS4K 45168'
-    type: BS4K
-    channel: '45168'
-    services: [151]
-  - name: 'BS4K 45169'
-    type: BS4K
-    channel: '45169'
-    services: [171]
-  - name: 'BS4K 45170'
-    type: BS4K
-    channel: '45170'
-    services: [141]
-  - name: 'BS4K 45232'
-    type: BS4K
-    channel: '45232'
-    services: [211]
-  - name: 'BS4K 45234'
-    type: BS4K
-    channel: '45234'
-    services: [221]
-  - name: 'BS4K 45328'
-    type: BS4K
-    channel: '45328'
-    services: [101]
-  - name: 'BS4K 45329'
-    type: BS4K
-    channel: '45329'
-    services: [161]
-  - name: 'BS4K 45330'
-    type: BS4K
-    channel: '45330'
-    services: [181]
-  # --- BS8K (ISDB-S3, 衛星8K, 左旋) ---
-  # NHK BS8K。種別は BS4K に混在（同じ ISDB-S3 経路）。channel は実 tlvStreamId=45280
-  # （左旋。右旋IFでは受からず以前 "signal absent" として除外されていた値）。
-  # smb400-tuner.sh が 45280 を IF 2472MHz にマップする。
-  # ※ channel 45745 は本機で信号が受からないため定義しない。
-  - name: 'BS8K NHK'
-    type: BS4K
-    channel: '45280'
-    services: [102]
-
-  # --- BS (ISDB-S, 従来2K衛星, 右旋) ---
-  # MULTI2 スクランブルを smb400-tuner.sh 内の b21dec が ACAS チップ経由で解除し、
-  # 平文 MPEG-TS を出力（mirakc の service-filter / program-filter で処理）。
-  # channel=BSxx_y（xx=トランスポンダ番号, _y=相対TS）。IF は xx から、実 TS-ID は
-  # smb400-tuner.sh の TS-ID 表（実機 NIT 由来）で解決して tunertest に渡す。
-  #
-  # 一覧は実機 NIT/SDT スキャン（2026-06-21, 右旋 BS01〜BS23）で全相対 TS を確認した結果。
-  # 各局の ECM を ACAS チップへ投げて復号可否(rc)も確認済み:
-  #   * BS07/11/17 は BS4K(ISDB-S3/TLV) 専用のため 2K では受からない。
-  #   * 無料局(rc=0x0800)は本機で復号可。有料局(rc=0xa103)は本機未契約のため復号不可
-  #     （契約のある ACAS チップなら b21dec で復号できる。参考として末尾にコメントで残置）。
-  #
-  # 無料局（本機で復号確認済み rc=0x0800）
-  - name: 'BS朝日'
+    channel: "25"
+    services: [1040, 1041, 1424]
+  - name: "ＮＨＫＥテレ・東京"
+    type: GR
+    channel: "26"
+    services: [1032, 1033, 1034, 1416]
+  - name: "ＮＨＫ総合・東京"
+    type: GR
+    channel: "27"
+    services: [1024, 1025, 1408]
+  - name: "チバテレ"
+    type: GR
+    channel: "30"
+    services: [27704, 27705, 27706, 28088]
+  - name: "テレ玉"
+    type: GR
+    channel: "32"
+    services: [29752, 29753, 29754, 30136]
+  # --- BS (ISDB-S, 従来2K衛星) ---
+  # channel = BSxx_y (xx=トランスポンダ番号, y=相対TS)。smb400-tuner.sh の TSID 表にあるもののみ。
+  - name: "ＢＳ朝日１"
     type: BS
-    channel: 'BS01_0'
+    channel: "BS01_0"
     services: [151, 152, 153]
-  - name: 'BS-TBS'
+  - name: "ＢＳ－ＴＢＳ"
     type: BS
-    channel: 'BS01_1'
+    channel: "BS01_1"
     services: [161, 162, 163]
-  - name: 'BSテレ東'
+  - name: "ＢＳテレ東"
     type: BS
-    channel: 'BS01_2'
+    channel: "BS01_2"
     services: [171, 172, 173]
-  - name: 'BS11イレブン'
+  - name: "ＷＯＷＯＷプライム"
     type: BS
-    channel: 'BS09_0'
+    channel: "BS03_0"
+    services: [191]
+  - name: "ＢＳアニマックス"
+    type: BS
+    channel: "BS03_1"
+    services: [236]
+  - name: "ＢＳ釣りビジョン"
+    type: BS
+    channel: "BS03_2"
+    services: [251]
+  - name: "ＷＯＷＯＷライブ"
+    type: BS
+    channel: "BS05_0"
+    services: [192]
+  - name: "ＷＯＷＯＷシネマ"
+    type: BS
+    channel: "BS05_1"
+    services: [193]
+  - name: "ＢＳ１１イレブン"
+    type: BS
+    channel: "BS09_0"
     services: [211]
-  - name: 'BS12トゥエルビ'
+  - name: "ＢＳ１１イレブン"
     type: BS
-    channel: 'BS09_2'
-    services: [222]
-  - name: 'BS日テレ'
+    channel: "BS09_2"
+  - name: "ＢＳ日テレ"
     type: BS
-    channel: 'BS13_0'
+    channel: "BS13_0"
     services: [141, 142, 143]
-  - name: 'BSフジ'
+  - name: "ＢＳフジ・１８１"
     type: BS
-    channel: 'BS13_1'
+    channel: "BS13_1"
     services: [181, 182, 183]
-  - name: '放送大学'
+  - name: "放送大学テレビ"
     type: BS
-    channel: 'BS13_2'
+    channel: "BS13_2"
     services: [231, 232]
-  - name: 'NHK BS'
+  - name: "ＮＨＫ　ＢＳ"
     type: BS
-    channel: 'BS15_0'
+    channel: "BS15_0"
     services: [101, 102]
-  - name: 'BS10'
+  - name: "ＢＳ１０プレミアム"
     type: BS
-    channel: 'BS15_2'
+    channel: "BS15_1"
+    services: [201]
+  - name: "ＢＳ１０"
+    type: BS
+    channel: "BS15_2"
     services: [200]
-  - name: 'BSよしもと'
+  - name: "Ｊ　ＳＰＯＲＴＳ　４"
     type: BS
-    channel: 'BS23_1'
+    channel: "BS19_0"
+    services: [245]
+  - name: "Ｊ　ＳＰＯＲＴＳ　１"
+    type: BS
+    channel: "BS19_1"
+    services: [242]
+  - name: "Ｊ　ＳＰＯＲＴＳ　２"
+    type: BS
+    channel: "BS19_2"
+    services: [243]
+  - name: "Ｊ　ＳＰＯＲＴＳ　３"
+    type: BS
+    channel: "BS19_3"
+    services: [244]
+  - name: "ＷＯＷＯＷプラス"
+    type: BS
+    channel: "BS21_0"
+    services: [252]
+  - name: "日本映画専門ｃｈ"
+    type: BS
+    channel: "BS21_1"
+    services: [255]
+  - name: "グリーンチャンネル"
+    type: BS
+    channel: "BS21_2"
+    services: [234]
+  - name: "ディズニーｃｈ"
+    type: BS
+    channel: "BS23_0"
+    services: [256]
+  - name: "ＢＳよしもと"
+    type: BS
+    channel: "BS23_1"
     services: [265]
-  - name: 'J:COM BS'
+  - name: "ディズニーｃｈ"
     type: BS
-    channel: 'BS23_3'
-    services: [260]
-
-  # --- CS (110度CS, ISDB-S 2K相当) ---
-  # MULTI2 スクランブルを smb400-tuner.sh 内の b21dec が ACAS チップ経由で解除し、
-  # 平文 MPEG-TS を出力（mirakc の service-filter / program-filter で処理）。
-  # channel=ND02〜ND24（偶数のみ）。1トランスポンダ=単一TS(MPTS)のため
-  # BS のような TSID 表は不要（smb400-tuner.sh が NDxx から IF を直接算出）。
-  # services の実測値は hotarun 側 .111 機の実波 SDT 由来（全国共通の固定値）。
-  # services なしはサービススキャン用のプレースホルダ（make test-cs が CS/ND02 を叩く）。
-  - name: 'CS ND02'
+    channel: "BS23_3"
+  # --- CS (110度CS) ---
+  # channel = NDxx (xx=偶数トランスポンダ番号)。
+  - name: "ＴＢＳチャンネル１"
     type: CS
-    channel: 'ND02'
-  - name: 'CS ND04'
+    channel: "ND02"
+    services: [296, 298, 299, 339]
+  - name: "スカイＡ"
     type: CS
-    channel: 'ND04'
-  - name: 'CS ND06'
+    channel: "ND04"
+    services: [250, 292, 301, 323]
+  - name: "ホームドラマＣＨ"
     type: CS
-    channel: 'ND06'
-  - name: 'CS ND08'
+    channel: "ND06"
+    services: [294, 324, 329, 331, 340, 341, 354, 363]
+  - name: "ショップチャンネル"
     type: CS
-    channel: 'ND08'
-  - name: 'CS ND10'
+    channel: "ND08"
+    services: [55, 218, 318, 349]
+  - name: "衛星劇場"
     type: CS
-    channel: 'ND10'
-  - name: 'CS ND12'
+    channel: "ND10"
+    services: [219, 317, 800, 801]
+  - name: "ＧＡＯＲＡ"
     type: CS
-    channel: 'ND12'
-  - name: 'CS ND14'
+    channel: "ND12"
+    services: [254, 325, 330, 343]
+  - name: "ザ・シネマ"
     type: CS
-    channel: 'ND14'
-  - name: 'CS ND16'
+    channel: "ND14"
+    services: [227, 293, 310, 342]
+  - name: "ＳＫＹ　ＳＴＡＧＥ"
     type: CS
-    channel: 'ND16'
-  - name: 'CS ND18'
+    channel: "ND16"
+    services: [290, 311, 316, 321, 333, 353]
+  - name: "ムービープラス"
     type: CS
-    channel: 'ND18'
-  - name: 'CS ND20'
+    channel: "ND18"
+    services: [240, 262, 305, 314]
+  - name: "フジテレビＯＮＥ"
     type: CS
-    channel: 'ND20'
-  - name: 'CS ND22'
+    channel: "ND20"
+    services: [307, 308, 309, 322]
+  - name: "ＱＶＣ"
     type: CS
-    channel: 'ND22'
-  - name: 'CS ND24'
+    channel: "ND22"
+    services: [161, 297, 312, 351]
+  - name: "映画・ｃｈＮＥＣＯ"
     type: CS
-    channel: 'ND24'
-
-  # 有料局（未契約のため無効。契約があれば有効化可）
-  # - name: 'テレ朝チャンネル1'
-  #   type: CS
-  #   channel: 'ND02'
-  #   services: [298]
-  # - name: 'テレ朝チャンネル2'
-  #   type: CS
-  #   channel: 'ND02'
-  #   services: [299]
-  # - name: 'AT-X'
-  #   type: CS
-  #   channel: 'ND16'
-  #   services: [333]
-  # - name: '日テレプラス'
-  #   type: CS
-  #   channel: 'ND24'
-  #   services: [300]
-
-  # 有料局（本機は未契約のため rc=0xa103 で復号不可。契約のあるチップなら有効化可）
-  # - name: 'WOWOWプライム'
-  #   type: BS
-  #   channel: 'BS03_0'
-  #   services: [191]
-  # - name: 'WOWOWライブ'
-  #   type: BS
-  #   channel: 'BS05_0'
-  #   services: [192]
-  # - name: 'J SPORTS 4'
-  #   type: BS
-  #   channel: 'BS19_0'
-  #   services: [245]
-  # - name: 'WOWOWプラス'
-  #   type: BS
-  #   channel: 'BS21_0'
-  #   services: [252]
-  # - name: 'ディズニーch'
-  #   type: BS
-  #   channel: 'BS23_0'
-  #   services: [256]
+    channel: "ND24"
+    services: [223, 257, 295, 300]
+  # --- BS4K / BS8K (ISDB-S3) ---
+  # channel = 5桁 StreamID。BS8K (45280) は .111 に無いため現行 config から引き継ぎ。
+  - name: "ＢＳ朝日　４Ｋ"
+    type: BS4K
+    channel: "45168"
+    services: [151]
+  - name: "ＢＳテレ東４Ｋ"
+    type: BS4K
+    channel: "45169"
+    services: [171]
+  - name: "ＢＳ日テレ　４Ｋ"
+    type: BS4K
+    channel: "45170"
+    services: [141]
+  - name: "ショップチャンネル"
+    type: BS4K
+    channel: "45232"
+    services: [211]
+  - name: "４Ｋ　ＱＶＣ"
+    type: BS4K
+    channel: "45234"
+    services: [221]
+  # BS8K NHK (左旋)。NID 不明のため services.json には未収録 (初回スキャンで取得)。
+  - name: "BS8K NHK"
+    type: BS4K
+    channel: "45280"
+    services: [102]
+  - name: "ＮＨＫ　ＢＳＰ４Ｋ"
+    type: BS4K
+    channel: "45328"
+    services: [101]
+  - name: "ＢＳ－ＴＢＳ　４Ｋ"
+    type: BS4K
+    channel: "45329"
+    services: [161]
+  - name: "ＢＳフジ４Ｋ"
+    type: BS4K
+    channel: "45330"
+    services: [181]
 
 tuners:
   # 1台の物理チューナーが GR / BS / CS / BS4K を兼用する。
