@@ -29,8 +29,9 @@ $MIRAKC/strings.yml
 "
 missing=""
 for f in $REQUIRED; do
-    # `[ -e ]` is false for Alpine's /bin/sh (symlink to /bin/busybox, an absolute
-    # path that does not resolve in the Android namespace), so accept symlinks too.
+    # Alpine's /bin/sh is a symlink; setup_proot.sh normalizes it to a relative
+    # 'busybox' link, but older installs may still have the (Android-namespace)
+    # dangling absolute link — accept symlinks too.
     { [ -e "$f" ] || [ -L "$f" ]; } || missing="$missing $f"
 done
 if [ -n "$missing" ]; then

@@ -331,14 +331,14 @@ make setup-runtime ADB_TARGET=<デバイスのIPアドレス>:5555
 Alpine ARM32 minirootfs のダウンロードと、mirakc が要求する **glibc (armhf) ランタイム**（`/data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/`）の配備を自動で行います。
 完了まで 3〜5 分かかります。**Node.js は不要になりました**（mirakc は静的リンクに近い Rust バイナリで、Alpine の musl ではなく同梱の glibc ランタイムを `LD_LIBRARY_PATH` 経由で使います）。
 
-展開後は `mirakc-root/bin/busybox` が armhf（ELF32 ARM）であること、`mirakc-root/bin/sh -> /bin/busybox` であることを検証し、chroot 内で `/bin/sh` が動作することを確認します。壊れていれば Alpine minirootfs から自動修復するため、**手動での busybox 差し替えやシンボリックリンク修正は不要**です（[トラブルシューティング](#alpine-の-binsh-や-binbusybox-が壊れたアーキテクチャが違うと言われた)参照）。
+展開後は `mirakc-root/bin/busybox` が armhf（ELF32 ARM）であること、`mirakc-root/bin/sh -> busybox`（相対リンク）であることを検証し、chroot 内で `/bin/sh` が動作することを確認します。壊れていれば Alpine minirootfs から自動修復するため、**手動での busybox 差し替えやシンボリックリンク修正は不要**です（[トラブルシューティング](#alpine-の-binsh-や-binbusybox-が壊れたアーキテクチャが違うと言われた)参照）。
 
 完了確認（rootfs が展開されていること）:
 
 ```sh
 adb -s <デバイスのIPアドレス>:5555 shell \
-  "ls /data/local/tmp/mirakc-root/bin/sh /data/local/tmp/mirakc-root/bin/busybox /data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/ld-linux-armhf.so.3"
-# → すべてのパスが表示されること
+  "ls -l /data/local/tmp/mirakc-root/bin/sh /data/local/tmp/mirakc-root/bin/busybox /data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/ld-linux-armhf.so.3"
+# → すべてのパスが表示されること（bin/sh は -> busybox の相対リンク）
 ```
 
 ---
@@ -752,19 +752,23 @@ glibc ランタイムが未配備です。`make setup-runtime` を実行して�
 
 ### Alpine の /bin/sh や /bin/busybox が壊れた（アーキテクチャが違うと言われた）
 
+> **先に確認**: `ls /data/local/tmp/mirakc-root/bin/sh` で `No such file or directory` が出ても、**機能上の異常ではありません**。Alpine の `/bin/sh` は絶対リンク `-> /bin/busybox` で、chroot 外（Android 名前空間）から見ると `/bin/busybox` が存在しないためリンク切れに見えるだけです。chroot 内では正しく解決します（`ls -l` でリンク実体を確認できます）。最新の `setup_proot.sh` は Step 2.5 で自動的に相対リンク `-> busybox` に正規化するため、このエラー自体が出なくなります。
+
 `chroot: /bin/sh: No such file or directory` や、`ls` では存在するのに chroot 内で何も実行できない場合は、`mirakc-root` の展開が不完全か、`bin/busybox` が armhf 以外（aarch64 など）になっています。
 
 ```sh
 adb -s <デバイスのIPアドレス>:5555 shell \
   "ls -la /data/local/tmp/mirakc-root/bin/sh /data/local/tmp/mirakc-root/bin/busybox; \
    od -An -tx1 -N20 /data/local/tmp/mirakc-root/bin/busybox"
-# → bin/sh -> /bin/busybox で、busybox の先頭が 7f 45 4c 46 01 01 (ELF32 LE) / 機械種別 2800 (ARM) なら正常
+# → bin/sh -> busybox（相対）または -> /bin/busybox で、busybox の先頭が
+#    7f 45 4c 46 01 01 (ELF32 LE) / 機械種別 2800 (ARM) なら正常
 ```
 
-`make setup-runtime` は毎回この検証を行い、壊れていれば minirootfs から `bin/busybox` を再配置し、`bin/sh -> /bin/busybox` を張り直します。**手動で busybox をダウンロードして差し替える必要はありません**（armhf 版 Alpine minirootfs の busybox がそのまま正解です）。
+`make setup-runtime` は毎回この検証を行い、壊れていれば minirootfs から `bin/busybox` を再配置し、`bin/sh -> busybox`（相対リンク）を張り直します。既存インストールでも再実行すれば修復されます。**手動で busybox をダウンロードして差し替える必要はありません**（armhf 版 Alpine minirootfs の busybox がそのまま正解です）。
 
-- `bin/sh` は通常 `-> /bin/busybox` のシンボリックリンクです（Android の toybox tar でも正しく展開されます）。リンクに見えても壊れてはいません。
-- `make setup-runtime` の Step 2.5（busybox / sh 検証）は、rootfs が既に展開済みでダウンロードをスキップした場合でも実行されます。
+- `bin/sh` は `-> busybox`（相対）または `-> /bin/busybox`（絶対）のシンボリックリンクです。リンクに見えても壊れてはいません。
+- `ls /data/local/tmp/mirakc-root/bin/sh`（`-l` なし）が `No such file or directory` になっても、chroot 内で動いていれば問題ありません。確認は `ls -l` を使ってください。
+- `make setup-runtime` の Step 2.5（busybox / sh 検証・正規化）は、rootfs が既に展開済みでダウンロードをスキップした場合でも実行されます。
 - chroot 内で `/bin/sh` が起動できないほど rootfs が壊れている場合は、`make setup-runtime` がエラーで停止します。その場合は作り直してください:
   ```sh
   adb -s <デバイスのIPアドレス>:5555 shell "rm -rf /data/local/tmp/mirakc-root"

@@ -7,7 +7,8 @@
 # What this does:
 #   1. Downloads the Alpine Linux ARM minimal rootfs
 #   2. Pushes it to /data/local/tmp/ on the device and extracts it
-#   2.5. Verifies (and repairs) bin/busybox + bin/sh, then smoke-tests /bin/sh
+#   2.5. Verifies (and repairs) bin/busybox + bin/sh, normalizes bin/sh to a
+#        relative 'busybox' link, then smoke-tests /bin/sh
 #   3. Prepares the chroot skeleton (DNS, /var/run, /run)
 #   4. Downloads the real glibc armhf runtime (libc6 / libgcc-s1 / libstdc++6)
 #      from Ubuntu ports and deploys it to /data/local/tmp/glibc-armhf
@@ -74,7 +75,11 @@ case "$alpine_present" in
 esac
 
 echo "=== Step 2.5: Verify busybox and /bin/sh ==="
-# Alpine's /bin/sh is a symlink to /bin/busybox (an armhf ELF32 ARM binary).
+# Alpine ships bin/sh as an absolute symlink -> /bin/busybox (an armhf ELF32
+# ARM binary). Outside the chroot (Android namespace) /bin/busybox does not
+# exist, so toybox `ls` and `test -e` fail on that link even though it resolves
+# fine inside the chroot. Normalize it to the relative link `busybox` (resolved
+# against bin/) so it works from both namespaces, and verify that from Android.
 # Verify this even when Step 1-2 was skipped: a rootfs left behind by an
 # interrupted extraction can still have /etc/alpine-release while /bin/sh or
 # /bin/busybox is missing, and a wrong-architecture busybox (e.g. aarch64)
@@ -95,11 +100,29 @@ if [ "$busybox_ok" != "yes" ]; then
     $ADB push "$WORK_DIR/alpine-fix/bin/busybox" "$ROOTFS_DIR/bin/busybox"
     $ADB shell chmod 755 "$ROOTFS_DIR/bin/busybox"
 fi
-if [ "$busybox_ok" = "yes" ] && [ "$sh_link" = "/bin/busybox" ]; then
-    echo "[=] bin/sh -> /bin/busybox (armhf busybox) — OK."
+# Normalize bin/sh to the relative link `busybox` (idempotent). The pristine
+# Alpine minirootfs has an absolute `-> /bin/busybox`, which Android's toybox
+# reports as dangling ("No such file or directory") outside the chroot; the
+# relative link resolves in both the Android and the chroot namespace.
+# Remove-then-create instead of `ln -sf`: toybox ln has no reliable -f behavior.
+if [ "$sh_link" = "busybox" ]; then
+    echo "[=] bin/sh -> busybox (relative, armhf busybox) — OK."
 else
-    echo "[*] Relinking bin/sh -> /bin/busybox"
-    $ADB shell "ln -sf /bin/busybox '$ROOTFS_DIR/bin/sh'"
+    if [ "$sh_link" = "/bin/busybox" ]; then
+        echo "[*] bin/sh was an absolute symlink — normalized to a relative 'busybox' link (resolves in Android and chroot namespaces)."
+    else
+        echo "[*] Relinking bin/sh -> busybox (was: ${sh_link:-missing})"
+    fi
+    $ADB shell "rm -f '$ROOTFS_DIR/bin/sh'; ln -s busybox '$ROOTFS_DIR/bin/sh'"
+fi
+# Regression check for the exact 5ch-reported symptom: resolve bin/sh from the
+# Android namespace (outside the chroot). With the relative link this succeeds;
+# the pristine absolute link fails here.
+if $ADB shell "test -e '$ROOTFS_DIR/bin/sh'" 2>/dev/null; then
+    echo "[=] Android-side check: $ROOTFS_DIR/bin/sh resolves — OK."
+else
+    echo "[!] $ROOTFS_DIR/bin/sh does not resolve from the Android namespace."
+    exit 1
 fi
 # Functional smoke test: execute /bin/sh inside the chroot. This catches an
 # incomplete rootfs (e.g. missing /lib/ld-musl-armhf.so.1) that the file-level
