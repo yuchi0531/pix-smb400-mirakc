@@ -331,12 +331,14 @@ make setup-runtime ADB_TARGET=<デバイスのIPアドレス>:5555
 Alpine ARM32 minirootfs のダウンロードと、mirakc が要求する **glibc (armhf) ランタイム**（`/data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/`）の配備を自動で行います。
 完了まで 3〜5 分かかります。**Node.js は不要になりました**（mirakc は静的リンクに近い Rust バイナリで、Alpine の musl ではなく同梱の glibc ランタイムを `LD_LIBRARY_PATH` 経由で使います）。
 
+展開後は `mirakc-root/bin/busybox` が armhf（ELF32 ARM）であること、`mirakc-root/bin/sh -> /bin/busybox` であることを検証し、chroot 内で `/bin/sh` が動作することを確認します。壊れていれば Alpine minirootfs から自動修復するため、**手動での busybox 差し替えやシンボリックリンク修正は不要**です（[トラブルシューティング](#alpine-の-binsh-や-binbusybox-が壊れたアーキテクチャが違うと言われた)参照）。
+
 完了確認（rootfs が展開されていること）:
 
 ```sh
 adb -s <デバイスのIPアドレス>:5555 shell \
-  "ls /data/local/tmp/mirakc-root/bin/sh /data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/ld-linux-armhf.so.3"
-# → 両方のパスが表示されること
+  "ls /data/local/tmp/mirakc-root/bin/sh /data/local/tmp/mirakc-root/bin/busybox /data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/ld-linux-armhf.so.3"
+# → すべてのパスが表示されること
 ```
 
 ---
@@ -748,12 +750,48 @@ cannot execute: required file not found
 
 glibc ランタイムが未配備です。`make setup-runtime` を実行してください。配備先は `/data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/` で、`start_mirakc.sh` が chroot 内で `LD_LIBRARY_PATH` を設定します。
 
+### Alpine の /bin/sh や /bin/busybox が壊れた（アーキテクチャが違うと言われた）
+
+`chroot: /bin/sh: No such file or directory` や、`ls` では存在するのに chroot 内で何も実行できない場合は、`mirakc-root` の展開が不完全か、`bin/busybox` が armhf 以外（aarch64 など）になっています。
+
+```sh
+adb -s <デバイスのIPアドレス>:5555 shell \
+  "ls -la /data/local/tmp/mirakc-root/bin/sh /data/local/tmp/mirakc-root/bin/busybox; \
+   od -An -tx1 -N20 /data/local/tmp/mirakc-root/bin/busybox"
+# → bin/sh -> /bin/busybox で、busybox の先頭が 7f 45 4c 46 01 01 (ELF32 LE) / 機械種別 2800 (ARM) なら正常
+```
+
+`make setup-runtime` は毎回この検証を行い、壊れていれば minirootfs から `bin/busybox` を再配置し、`bin/sh -> /bin/busybox` を張り直します。**手動で busybox をダウンロードして差し替える必要はありません**（armhf 版 Alpine minirootfs の busybox がそのまま正解です）。
+
+- `bin/sh` は通常 `-> /bin/busybox` のシンボリックリンクです（Android の toybox tar でも正しく展開されます）。リンクに見えても壊れてはいません。
+- `make setup-runtime` の Step 2.5（busybox / sh 検証）は、rootfs が既に展開済みでダウンロードをスキップした場合でも実行されます。
+- chroot 内で `/bin/sh` が起動できないほど rootfs が壊れている場合は、`make setup-runtime` がエラーで停止します。その場合は作り直してください:
+  ```sh
+  adb -s <デバイスのIPアドレス>:5555 shell "rm -rf /data/local/tmp/mirakc-root"
+  make setup-runtime ADB_TARGET=<デバイスのIPアドレス>:5555
+  ```
+
 ### BS4K が無映像・無出力
 
 - `make test` の先頭が `7f ff ...` → 未復号。ACAS マスターキー（Step 8）と契約を確認。
 - OEM チューナーサービスが ACAS を占有している → 上記「OEM サービスと ACAS 競合」を参照。
 - 出力なし → チューナーが応答していない。`make log` を確認し、`make restart` を試す。
 - BS4K/BS8K は passthrough のみのため、クライアント側も mmt/tlv 対応 FFmpeg や BS4K 対応 EPGStation が必要です。
+
+### TVTest 等の外部クライアントで視聴できない（信号が流れてこない）
+
+`make test` / `make test-cs` でストリームの先頭が復号済み（`7f ff` 以外）なのに、TVTest 側で映像が出ない場合はクライアント側の BonDriver 設定を確認してください。
+
+- **mirakc 用の BonDriver を使う**: [stuayu/BonDriver_mirakc](https://github.com/stuayu/BonDriver_mirakc) を使い、mirakc の API（`http://<デバイスのIPアドレス>:40772`）へ接続します。Mirakurun 用 BonDriver は mirakc では動作しないことがあります。
+- **BS4K / BS8K は専用 BonDriver が必要**: mirakc は BS4K / BS8K を TLV のまま passthrough するため、dantto4k 等の ISDB-S3 対応 BonDriver を経由してください（例: `BonDriver_mirakc` → `BonDriver_dantto4k` の構成でリアルタイム視聴可）。
+- **PC 側の破損も疑う**: TVTest / BonDriver / その依存ライブラリがクラッシュや破損を起こすと、実機は正常でも「API は応答するが映像が出ない」状態になります。BonDriver を差し替え・再配置するか、クライアント PC を再起動して切り分けてください。
+- ホスト側から見た切り分け:
+  ```sh
+  # チューナー〜mirakc まで問題ないか（期待値: 先頭が 7f ff 以外 = 復号済み）
+  make test ADB_TARGET=<デバイスのIPアドレス>:5555
+  # mirakc → クライアントへ配信中のストリームを直接確認（同じ URL を VLC 等で開いても可）
+  curl -s --max-time 8 http://<デバイスのIPアドレス>:40772/api/channels/GR/27/stream | od -v -t x1 | head -4
+  ```
 
 ### その他（USB ブート・ADB）
 

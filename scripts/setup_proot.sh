@@ -7,6 +7,7 @@
 # What this does:
 #   1. Downloads the Alpine Linux ARM minimal rootfs
 #   2. Pushes it to /data/local/tmp/ on the device and extracts it
+#   2.5. Verifies (and repairs) bin/busybox + bin/sh, then smoke-tests /bin/sh
 #   3. Prepares the chroot skeleton (DNS, /var/run, /run)
 #   4. Downloads the real glibc armhf runtime (libc6 / libgcc-s1 / libstdc++6)
 #      from Ubuntu ports and deploys it to /data/local/tmp/glibc-armhf
@@ -39,10 +40,22 @@ ALPINE_VERSION=3.20
 ALPINE_ARCH=armhf
 ALPINE_URL="https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VERSION}/releases/${ALPINE_ARCH}/alpine-minirootfs-${ALPINE_VERSION}.0-${ALPINE_ARCH}.tar.gz"
 
+# Download the minirootfs once per run (Step 2 extracts it; Step 2.5 reuses it
+# for repairs). Android's toybox tar cannot exec gunzip, so decompress on the
+# host and push an uncompressed .tar (extracted with `tar xf` on the device).
+ensure_alpine_tar() {
+    if [ ! -f "$WORK_DIR/alpine-rootfs.tar" ]; then
+        curl -L -o "$WORK_DIR/alpine-rootfs.tar.gz" "$ALPINE_URL"
+        gunzip "$WORK_DIR/alpine-rootfs.tar.gz"   # → $WORK_DIR/alpine-rootfs.tar
+    fi
+}
+
 # Idempotent: the Alpine minirootfs is immutable, so skip the download/extract
 # when it is already provisioned. Re-extracting would also fail because Step 3
 # replaces Alpine's /var/run symlink with a real directory (tar cannot remove a
 # directory to recreate the symlink), so a presence check is required anyway.
+# tr -d '\r\n' strips the CRLF that `adb shell` appends to captured output
+# (intentional — it is not a stray line ending in this script).
 alpine_present=$($ADB shell "[ -f '$ROOTFS_DIR/etc/alpine-release' ] && echo yes || echo no" | tr -d '\r\n')
 case "$alpine_present" in
     *yes*)
@@ -50,16 +63,57 @@ case "$alpine_present" in
         ;;
     *)
         echo "=== Step 1: Download Alpine ${ALPINE_VERSION} (${ALPINE_ARCH}) ==="
-        curl -L -o "$WORK_DIR/alpine-rootfs.tar.gz" "$ALPINE_URL"
-        # Android's toybox tar cannot exec gunzip, so decompress on the host and push
-        # an uncompressed .tar (extracted with `tar xf` on the device).
-        gunzip "$WORK_DIR/alpine-rootfs.tar.gz"   # → $WORK_DIR/alpine-rootfs.tar
+        ensure_alpine_tar
 
         echo "=== Step 2: Push and extract Alpine rootfs ==="
         $ADB shell mkdir -p "$ROOTFS_DIR"
         $ADB push "$WORK_DIR/alpine-rootfs.tar" "$DEVICE_TMP/alpine-rootfs.tar"
         $ADB shell "cd '$ROOTFS_DIR' && tar xf '$DEVICE_TMP/alpine-rootfs.tar'"
         $ADB shell "rm '$DEVICE_TMP/alpine-rootfs.tar'"
+        ;;
+esac
+
+echo "=== Step 2.5: Verify busybox and /bin/sh ==="
+# Alpine's /bin/sh is a symlink to /bin/busybox (an armhf ELF32 ARM binary).
+# Verify this even when Step 1-2 was skipped: a rootfs left behind by an
+# interrupted extraction can still have /etc/alpine-release while /bin/sh or
+# /bin/busybox is missing, and a wrong-architecture busybox (e.g. aarch64)
+# makes every chroot fail with "No such file or directory". Repair instead of
+# letting the failure surface later in start_mirakc.sh.
+# tr -d '\r\n' strips the CRLF that `adb shell` appends (see note above).
+sh_link=$($ADB shell "readlink '$ROOTFS_DIR/bin/sh' 2>/dev/null" 2>/dev/null | tr -d '\r\n') || sh_link=""
+# ELF header of bin/busybox: magic + 32-bit + little-endian (first 12 hex chars),
+# e_machine = ARM 0x0028 (last 4 hex chars).
+bb_header=$($ADB shell "od -An -tx1 -N20 '$ROOTFS_DIR/bin/busybox' 2>/dev/null" 2>/dev/null | tr -d ' \r\n') || bb_header=""
+busybox_ok=no
+{ [ "${bb_header:0:12}" = "7f454c460101" ] && [ "${bb_header: -4}" = "2800" ]; } && busybox_ok=yes
+if [ "$busybox_ok" != "yes" ]; then
+    echo "[!] bin/busybox is missing or not an armhf ELF32 ARM binary — restoring from minirootfs..."
+    ensure_alpine_tar
+    mkdir -p "$WORK_DIR/alpine-fix"
+    tar -C "$WORK_DIR/alpine-fix" -xf "$WORK_DIR/alpine-rootfs.tar" ./bin/busybox
+    $ADB push "$WORK_DIR/alpine-fix/bin/busybox" "$ROOTFS_DIR/bin/busybox"
+    $ADB shell chmod 755 "$ROOTFS_DIR/bin/busybox"
+fi
+if [ "$busybox_ok" = "yes" ] && [ "$sh_link" = "/bin/busybox" ]; then
+    echo "[=] bin/sh -> /bin/busybox (armhf busybox) — OK."
+else
+    echo "[*] Relinking bin/sh -> /bin/busybox"
+    $ADB shell "ln -sf /bin/busybox '$ROOTFS_DIR/bin/sh'"
+fi
+# Functional smoke test: execute /bin/sh inside the chroot. This catches an
+# incomplete rootfs (e.g. missing /lib/ld-musl-armhf.so.1) that the file-level
+# checks above cannot see.
+sh_probe=$($ADB shell "chroot '$ROOTFS_DIR' /bin/sh -c 'echo sh-ok' 2>&1" || true)
+case "$sh_probe" in
+    *sh-ok*)
+        echo "[=] chroot /bin/sh OK."
+        ;;
+    *)
+        echo "[!] chroot /bin/sh failed: $(echo "$sh_probe" | tr -d '\r\n')"
+        echo "[!] The Alpine rootfs is incomplete (e.g. an interrupted extraction)."
+        echo "[!] Recreate it: $ADB shell rm -rf '$ROOTFS_DIR' && make setup-runtime"
+        exit 1
         ;;
 esac
 
@@ -75,6 +129,8 @@ echo "=== Step 4: Deploy real glibc armhf runtime ==="
 # are all already on the device. If libstdc++.so.6 were missing, mirakc-arib
 # would fail to start (GLIBCXX_3.4.32), so all three are checked.
 # (Compare output because adb shell does not always propagate remote exit codes.)
+# tr -d '\r\n' strips the CRLF that `adb shell` appends to captured output
+# (intentional — see the note above Step 1-2).
 glibc_present=$($ADB shell "[ -f '$GLIBC_LIB_DEVICE/ld-linux-armhf.so.3' ] && [ -f '$GLIBC_LIB_DEVICE/libstdc++.so.6' ] && [ -f '$GLIBC_LIB_DEVICE/libgcc_s.so.1' ] && echo yes || echo no" | tr -d '\r\n')
 case "$glibc_present" in
     *yes*)
@@ -187,6 +243,7 @@ echo "mirakc startup test (best effort — needs 'make deploy-mirakc' first):"
 # is running), do NOT mount again: binding the same source over the existing
 # self-referential bind breaks path resolution inside the chroot, and the
 # umount below would then leave the running session without its bind mount.
+# tr -d '\r\n' strips the CRLF that `adb shell` appends (see the note above Step 1-2).
 already_mounted=$($ADB shell "grep -q ' $ROOTFS_DIR/data/local/tmp ' /proc/mounts && echo yes || echo no" | tr -d '\r\n')
 if [ "$already_mounted" != "yes" ]; then
     $ADB shell "mkdir -p '$ROOTFS_DIR/data/local/tmp'; \
