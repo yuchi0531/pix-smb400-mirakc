@@ -782,6 +782,20 @@ adb -s <デバイスのIPアドレス>:5555 shell \
 - 出力なし → チューナーが応答していない。`make log` を確認し、`make restart` を試す。
 - BS4K/BS8K は passthrough のみのため、クライアント側も mmt/tlv 対応 FFmpeg や BS4K 対応 EPGStation が必要です。
 
+### BS4K/BS/CS から地デジへ切り替えると画が出ないことがある
+
+BS4K/BS/CS を受信中に地デジ（GR）へ切り替えると、無信号や化け TS が流れて画が出ないことがありました。原因は旧 `tuner-stream-ng` の WARM START（前回と同じ周波数ならチューナー初期化を省略する高速化）です。
+
+- `.tuner_state`（GR の前回周波数）を書くのは GR 用の `tuner-stream-ng` だけで、BS/CS/BS4K は別バイナリ `tuner-stream-bs-ng` が復調器を使うため更新されません。
+- BS 系を受信した後に GR へ戻ると、state ファイルには古い GR 周波数が残ったまま復調器は BS 系を掴んでおり、WARM START の probe が「別バンドのデータ」を正常と誤判定して化け TS を流していました。
+
+最新版の `tuner-stream-ng` は WARM START を完全に廃止し、**常にコールドスタート**（~2-4 秒）になりました。`/data/local/tmp/.tuner_state` は読み書きしません。
+
+```sh
+# 旧版から更新する場合: 残っている state ファイルを削除（新バイナリでは再作成されません）
+adb -s <デバイスのIPアドレス>:5555 shell "rm -f /data/local/tmp/.tuner_state"
+```
+
 ### TVTest 等の外部クライアントで視聴できない（信号が流れてこない）
 
 `make test` / `make test-cs` でストリームの先頭が復号済み（`7f ff` 以外）なのに、TVTest 側で映像が出ない場合はクライアント側の BonDriver 設定を確認してください。
