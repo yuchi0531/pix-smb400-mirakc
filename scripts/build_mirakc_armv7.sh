@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # build_mirakc_armv7.sh — mirakc / mirakc-arib / mirakc-arib-tlv を
-# armv7-unknown-linux-gnueabihf (glibc) 向けにクロスビルドするスクリプト。
+# armv7-unknown-linux-gnueabihf (glibc) 向けにソースからクロスビルドするスクリプト。
 #
-# 【通常は不要】 デプロイ用バイナリは GitHub Release (smb400-armv7-v1) から
-# `make fetch-mirakc-armv7` で取得できます。
-# バイナリを自分で生成したい場合のみ実行してください。
+# デプロイ (push-bins / deploy-mirakc) から常に自動実行されます
+# (make build-mirakc-armv7)。
 #
 # 使い方 (リポジトリのルートで実行):
 #   bash scripts/build_mirakc_armv7.sh   # = make build-mirakc-armv7

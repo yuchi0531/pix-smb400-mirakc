@@ -12,7 +12,14 @@ FROM mcr.microsoft.com/devcontainers/base:trixie
 #   adb                    : pull android-libs / push binaries & scripts to the device
 #   python3-pycryptodome   : make_usb_boot.py (bootargs.bin / RSA key generation)
 #   curl                   : make start / make test, setup_proot.sh downloads
-#   git                    : clone mirakc / mirakc-arib(-tlv) sources for optional ARM cross builds
+#   git                    : clone mirakc / mirakc-arib(-tlv) / mirakc-webui sources
+#   gcc-arm-linux-gnueabihf + g++-arm-linux-gnueabihf + libc6-dev-armhf-cross +
+#   binutils-arm-linux-gnueabihf : ARMv7 (armhf) cross toolchain for mirakc
+#                            (make build-mirakc-armv7 cross-builds the mirakc-BS4K fork)
+#   cmake + ninja-build    : mirakc-arib build (part of make build-mirakc-armv7)
+#
+# Rust (rustup) and Node.js are provided by devcontainer features (see
+# devcontainer.json): the Rust toolchain for mirakc, Node for mirakc-webui.
 #
 # mkimage/u-boot-tools are intentionally omitted: build_initramfs.sh builds the
 # uImage inside a throwaway Docker container (docker-in-docker feature).
@@ -28,5 +35,11 @@ RUN apt-get update \
         python3-pycryptodome \
         curl \
         git \
+        gcc-arm-linux-gnueabihf \
+        g++-arm-linux-gnueabihf \
+        libc6-dev-armhf-cross \
+        binutils-arm-linux-gnueabihf \
+        cmake \
+        ninja-build \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*

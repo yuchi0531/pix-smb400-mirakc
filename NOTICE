@@ -23,14 +23,15 @@ License 2.0 and retain their original copyright headers:
 Related components (NOT bundled — deployed/built separately)
 ------------------------------------------------------------------------
 
-  mirakc (MIT OR Apache-2.0) — ARMv7 binaries distributed via the GitHub
-                               Release `smb400-armv7-v1` of
-                               yuchi0531/mirakc-BS4K (not included in this
-                               repository).
+  mirakc (MIT OR Apache-2.0) — cross-built from source into an ARMv7 binary
+                               (yuchi0531/mirakc-BS4K fork, not included in
+                               this repository).
   mirakc-arib (GPL-2.0-or-later)
-                             — same release page (upstream mirakc/mirakc-arib).
+                             — cross-built from upstream mirakc/mirakc-arib.
   mirakc-arib-tlv (MIT OR Apache-2.0)
-                             — same release page (yuchi0531/mirakc-arib-tlv).
+                             — cross-built from yuchi0531/mirakc-arib-tlv.
+  mirakc-webui (MIT)         — optional static SPA, built from source from
+                               yuchi0531/mirakc-webui.
   OpenSSL libssl/libcrypto — b61dec links against the device's own Android
                              system libssl/libcrypto at runtime (not
                              redistributed).

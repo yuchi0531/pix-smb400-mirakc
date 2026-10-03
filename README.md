@@ -2,9 +2,9 @@
 
 PIX-SMB400（HiSilicon Hi3798CV200 搭載 Android TV）上で [mirakc](https://github.com/mirakc/mirakc)（Rust 製 Mirakurun 互換 PVR バックエンド）を実行し、地上波（ISDB-T）・BS（ISDB-S）・BS4K / BS8K（ISDB-S3）を受信するためのプロジェクトです。
 
-本リポジトリは BS4K / BS8K の **TLV passthrough 対応** を追加した [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K) フォークを使用します。ARMv7 (glibc) 版の mirakc バイナリは [smb400-armv7-v1 リリース](https://github.com/yuchi0531/mirakc-BS4K/releases/tag/smb400-armv7-v1) から `make fetch-mirakc-armv7` で取得するため、クロスビルド環境なしでもデプロイできます（リポジトリにはバイナリを含みません）。自分でビルドする場合は `make build-mirakc-armv7`。
+本リポジトリは BS4K / BS8K の **TLV passthrough 対応** を追加した [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K) フォークを使用します。ARMv7 (glibc) 版の mirakc バイナリは常にソースから `make build-mirakc-armv7` でクロスビルドします（クロスビルド環境が必要。デプロイ時に自動実行されます）。リポジトリにはバイナリを含みません。
 
-Web UI は任意で [yuchi0531/mirakc-webui](https://github.com/yuchi0531/mirakc-webui) を導入できます（[Web UI (mirakc-webui)](#web-ui-mirakc-webui) 参照）。
+Web UI は [yuchi0531/mirakc-webui](https://github.com/yuchi0531/mirakc-webui)（mirakc 用静的 SPA）をソースからビルドして `make build-webui` / `make push-webui` で導入し、mirakc の `server.mounts` で `/www` として配信します（[Web UI (mirakc-webui)](#web-ui-mirakc-webui) 参照）。
 
 > 以前は Mirakurun（Node.js）を Alpine + chroot で動かす構成でしたが、現在は mirakc（Rust, glibc ARMv7）に移行しています。
 
@@ -34,7 +34,7 @@ Part 1: USB ブートで root を取る
 
 Part 2: mirakc のセットアップ
   Step 4  チューナーバイナリをビルドする（make build-bins）
-  Step 5  mirakc バイナリを用意する（Release から fetch・再ビルドは任意）
+  Step 5  mirakc バイナリをビルドする（make build-mirakc-armv7・デプロイ時に自動）
   Step 6  Alpine Linux + glibc ランタイムをセットアップする（make setup-runtime）
   Step 7  mirakc をデプロイする（make deploy-mirakc）
   Step 8  ACAS マスターキーを設定する
@@ -54,9 +54,9 @@ Part 3: 起動・確認
 | 作業コピー | 本リポジトリ（`git clone https://github.com/yuchi0531/pix-smb400-mirakc`）。以降のコマンドは clone したディレクトリのルートで実行 |
 | PIX-SMB400 本体 | USB ブートピンにアクセスできる状態 |
 | USB メモリ | FAT32 フォーマット、1 GB 以上 |
-| ビルド環境 | `python3` + `pycryptodome`（ブートファイル用）、`mkimage` (u-boot-tools) または Docker（uimg 用）、`binwalk`（`kernel.img` 展開用）、`gcc-arm-linux-gnueabi` + `libc6-dev-armel-cross` + `libssl-dev`（チューナーバイナリのビルド用）。mirakc 本体はリリースから取得するためクロスビルド環境は不要 |
+| ビルド環境 | `python3` + `pycryptodome`（ブートファイル用）、`mkimage` (u-boot-tools) または Docker（uimg 用）、`binwalk`（`kernel.img` 展開用）、`gcc-arm-linux-gnueabi` + `libc6-dev-armel-cross` + `libssl-dev`（チューナーバイナリのビルド用）、mirakc 本体のクロスビルド用に `rustup` + arm-linux-gnueabihf ツールチェーン + `cmake` / `ninja`（`make build-mirakc-armv7` 用）、Web UI 用に Node.js 18+ / npm（任意） |
 | ADB | デバイスへの接続（`adb connect` / `adb devices` で認識済みであること）。全デプロイ系コマンドで必要 |
-| ネットワーク | mirakc バイナリ取得（`make fetch-mirakc-armv7`）に必要（`curl` を使用） |
+| ネットワーク | mirakc 本体・Web UI のソース取得（`git clone`）に必要 |
 | ACAS マスターキー | 64 文字の hex |
 
 ---
@@ -70,10 +70,13 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 [.devcontainer/Dockerfile](.devcontainer/Dockerfile) からビルド環境が構築されます。主な内容:
 
 - `gcc-arm-linux-gnueabi` + `libc6-dev-armel-cross` + `libssl-dev` — `make build-bins`（ARM32 チューナーバイナリのクロスコンパイル）
+- `gcc-arm-linux-gnueabihf` + `g++-arm-linux-gnueabihf` + `libc6-dev-armhf-cross` + `binutils-arm-linux-gnueabihf` + `cmake` + `ninja-build` — `make build-mirakc-armv7`（mirakc-BS4K 本体の ARMv7 クロスビルド）
+- **Rust** feature — `make build-mirakc-armv7` が使う `cargo` / `rustup`
+- **Node.js** feature — `make build-webui`（mirakc-webui のビルド）
 - `binwalk` + `cpio` — `kernel.img` から initramfs cpio を展開（[Step 0](#step-0-kernelimg-を入手して展開する)）
 - `adb` — デバイスとのバイナリ転送・android-libs 取得
 - `python3-pycryptodome` — `make_usb_boot.py`（`bootargs.bin` / RSA 鍵生成）
-- `git` / `curl` — mirakc バイナリ（GitHub Release）の取得や、任意の再ビルド時のクローン
+- `git` / `curl` — mirakc / mirakc-webui ソースのクローン
 - **docker-in-docker** feature — `build_initramfs.sh` / `make_usb_boot.py` がコンテナ内で `docker run` を使う場合のため有効化済み（`mkimage` が使える環境では docker なしでもビルド可能）
 
 > 以降の手順に出てくる `sudo apt install ...`（`gcc-arm-linux-gnueabi`・`libc6-dev-armel-cross`・`libssl-dev`・`binwalk` 等）は、
@@ -101,11 +104,15 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   └── initramfs_overlay/           initramfs オーバーレイファイル
 │       └── start_mirakc.sh          mirakc 自動起動スクリプト（電源 ON 時に実行される版）
 ├── bin/                             ビルドしたチューナーバイナリの出力先（make build-bins で生成）
-├── tmp/mirakc-armv7/                mirakc 本体 ARMv7 (glibc) バイナリの取得先（gitignore 対象・コミットされない）
+├── tmp/mirakc-armv7/                mirakc 本体 ARMv7 (glibc) バイナリの出力先（gitignore 対象・コミットされない）
 │   ├── mirakc                       mirakc 本体（yuchi0531/mirakc-BS4K fork）
 │   ├── mirakc-arib                  GR / BS / CS(2K) 用フィルタ・ジョブ
 │   ├── mirakc-arib-tlv              BS4K / BS8K (TLV) 用ジョブ
 │   └── SHA256SUMS                   上記バイナリのチェックサム
+├── tmp/mirakc-webui/                Web UI (mirakc-webui) の dist 出力先（gitignore 対象・コミットされない）
+│   ├── index.html                   Web UI エントリポイント
+│   ├── favicon.svg
+│   └── assets/                      JS バンドル
 ├── include/openssl/                 b61dec ビルド用 OpenSSL 設定ヘッダ
 ├── scripts/
 │   ├── smb400-tuner.sh              mirakc チューナーコマンドラッパー
@@ -114,8 +121,8 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   ├── crash_guard.sh               クラッシュ監視ウォッチドッグ
 │   ├── write_usb_boot.sh            USBメモリへブートファイル3点を書き込む（要 sudo）
 │   ├── setup_proot.sh               Alpine rootfs + glibc-armhf 初回セットアップ
-│   ├── fetch_mirakc_armv7.sh        mirakc バイナリを GitHub Release から取得（通常はこちら）
-│   └── build_mirakc_armv7.sh        mirakc バイナリ再ビルドスクリプト（任意・上級者向け）
+│   ├── build_mirakc_armv7.sh        mirakc 3バイナリをソースからクロスビルド
+│   └── build_webui.sh               mirakc-webui をソースからビルドして dist を配置
 ├── config/
 │   ├── config.yml                   mirakc 設定（server / channels / tuners / filters / jobs）
 │   ├── services.json                サービス定義（mirakc の EPG キャッシュ services.json として配置）
@@ -136,6 +143,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 | `/data/local/tmp/mirakc/bin/` | mirakc / mirakc-arib / mirakc-arib-tlv |
 | `/data/local/tmp/mirakc/` | `config.yml` / `strings.yml` |
 | `/data/local/tmp/mirakc/epg/` | EPG キャッシュ（`services.json` など） |
+| `/data/local/tmp/mirakc/www/` | Web UI (mirakc-webui)（`server.mounts` で `/www` として配信） |
 | `/data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/` | glibc ランタイム（`make setup-runtime` で配備） |
 | `/data/local/tmp/mirakc-root/` | Alpine rootfs |
 | `/data/local/tmp/mirakc.log` | ログ |
@@ -295,28 +303,24 @@ make build-bins ADB_TARGET=<デバイスのIPアドレス>:5555
 ```
 
 > mirakc 本体（`mirakc` / `mirakc-arib` / `mirakc-arib-tlv`）はこのターゲットではビルドされません。
-> GitHub Release から取得します（Step 5）。
+> ソースからクロスビルドします（Step 5）。
 
 ---
 
-### Step 5: mirakc バイナリを用意する（通常は何もしなくてよい）
+### Step 5: mirakc バイナリをビルドする（デプロイ時に自動）
 
-ARMv7 (glibc) 版の mirakc 3バイナリはリポジトリに含まれません。デプロイ時に `make fetch-mirakc-armv7` が GitHub Release（[smb400-armv7-v1](https://github.com/yuchi0531/mirakc-BS4K/releases/tag/smb400-armv7-v1)）から `tmp/mirakc-armv7/` へ自動取得し、SHA256 を検証します（**クロスビルド環境は不要**）。手動で先に取得する場合:
+ARMv7 (glibc) 版の mirakc 3バイナリはリポジトリに含まれません。`make deploy-mirakc` / `make push-bins` 実行時に `make build-mirakc-armv7` が [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K) フォークをソースから**常にクロスビルド**し、`tmp/mirakc-armv7/` を更新します（**クロスビルド環境が必要**）。
 
-```sh
-make fetch-mirakc-armv7
-```
-
-- 取得済みで SHA256 が一致していれば再ダウンロードはスキップされます（強制再取得は `FORCE=1 make fetch-mirakc-armv7`）。
-- 通信できない環境では、自分でバイナリをビルドできます（任意・上級者向け）:
+手動で先にビルドする場合:
 
 ```sh
 # 前提: rustup/cargo + armv7-unknown-linux-gnueabihf target、
-#       gcc-arm-linux-gnueabihf / g++-arm-linux-gnueabihf、cmake、ninja、git
+#       gcc-arm-linux-gnueabihf / g++-arm-linux-gnueabihf / libc6-dev-armhf-cross、
+#       cmake、ninja、git
 make build-mirakc-armv7       # = bash scripts/build_mirakc_armv7.sh
 ```
 
-スクリプトは [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K)（SIGTERM 対応コミット固定）、[yuchi0531/mirakc-arib-tlv](https://github.com/yuchi0531/mirakc-arib-tlv)（v0.1.0）、[mirakc/mirakc-arib](https://github.com/mirakc/mirakc-arib)（v0.24.37 相当）を `tmp/mirakc-cross-build/` に clone してクロスビルドし、`tmp/mirakc-armv7/` を更新します。
+スクリプトは [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K)（SIGTERM 対応コミット固定）、[yuchi0531/mirakc-arib-tlv](https://github.com/yuchi0531/mirakc-arib-tlv)（v0.1.0）、[mirakc/mirakc-arib](https://github.com/mirakc/mirakc-arib)（v0.24.37 相当）を `tmp/mirakc-cross-build/` に clone してクロスビルドし、`tmp/mirakc-armv7/` を更新します。ビルドは再利用のため再実行可能です。
 
 ---
 
@@ -345,7 +349,7 @@ adb -s <デバイスのIPアドレス>:5555 shell \
 
 ### Step 7: mirakc をデプロイする
 
-PC 側の `tmp/mirakc-armv7/` にある mirakc バイナリ（`make fetch-mirakc-armv7` で取得。`make deploy-mirakc` 実行時には自動取得）と設定ファイルをデバイスへ転送します。
+PC 側の `tmp/mirakc-armv7/` にある mirakc バイナリ（`make build-mirakc-armv7` でソースからビルド。`make deploy-mirakc` 実行時には自動ビルド）と設定ファイルをデバイスへ転送します。
 
 ```sh
 make deploy-mirakc ADB_TARGET=<デバイスのIPアドレス>:5555
@@ -357,10 +361,11 @@ make deploy-mirakc ADB_TARGET=<デバイスのIPアドレス>:5555
 - `config/config.yml` → `/data/local/tmp/mirakc/config.yml`
 - `config/strings.yml` → `/data/local/tmp/mirakc/strings.yml`
 - `config/services.json` → `/data/local/tmp/mirakc/epg/services.json`（起動時スキャンの省略に使用）
+- `tmp/mirakc-webui/` → `/data/local/tmp/mirakc/www/`（Web UI。導入時のみ。`make push-webui` で単独更新も可能。詳細は [Web UI (mirakc-webui)](#web-ui-mirakc-webui)）
 
 mirakc の設定は `config/config.yml` です（`server.addrs` は `0.0.0.0:40772`、EPG キャッシュは `/data/local/tmp/mirakc/epg`）。`config/strings.yml` は `config.yml` の `resource.strings-yaml` から参照されます。
 
-> 設定やスクリプトを更新した場合は `make push-all` だけ再実行します（チューナーバイナリ + mirakc バイナリ + スクリプト + 設定を一括更新）。
+> 設定やスクリプトを更新した場合は `make push-all` だけ再実行します（チューナーバイナリ + mirakc バイナリ + スクリプト + 設定 + Web UI を一括更新）。
 
 > **注意（initramfs 再ビルドが必要なケース）**
 > `scripts/` 内のファイル（`smb400-tuner.sh`, `start_mirakc.sh`, `crash_guard.sh`, `stop_android_tv.sh`）を変更した場合、**起動のたびに initramfs 内の版が `/data/local/tmp/` へ上書きコピーされる**ため、`make push-scripts` の変更は再起動で元に戻ってしまいます。
@@ -576,48 +581,38 @@ EPGStation をセットアップする際に `mirakurunPath` を `http://<デバ
 
 ## Web UI (mirakc-webui)
 
-mirakc 自体は Web UI を持ちません。任意で静的 SPA の
-[yuchi0531/mirakc-webui](https://github.com/yuchi0531/mirakc-webui) を導入できます。
-本リポジトリの標準デプロイには含まれません（使う場合のみ以下を実施）。
+mirakc 自体は Web UI を持ちません。静的 SPA の
+[yuchi0531/mirakc-webui](https://github.com/yuchi0531/mirakc-webui) をソースからビルドして導入します。
 
-### セットアップ手順
+### ビルドと配置
 
-1. Web UI をビルドする（要 Node.js 18+ / npm）:
-   ```sh
-   git clone https://github.com/yuchi0531/mirakc-webui
-   cd mirakc-webui
-   npm ci
-   npm run build
-   ```
-   成果物は `dist/`（index.html ほか）。
+Web UI はソースからビルドして配置します（要 Node.js 18+ / npm）:
 
-2. デバイスへ配置:
-   ```sh
-   adb shell mkdir -p /data/local/tmp/mirakc/www
-   adb push dist/. /data/local/tmp/mirakc/www/
-   ```
+```sh
+# ビルド（tmp/mirakc-webui-src に clone して dist を tmp/mirakc-webui/ へ配置）
+make build-webui
 
-3. `config/config.yml` の `server:` に `mounts` を追加（既存の `addrs` はそのまま）:
-   ```yaml
-   server:
-     mounts:
-       /www:
-         path: /data/local/tmp/mirakc/www
-         index: index.html
-   ```
-   ⚠️ mirakc は `mounts.<path>` が存在しないと起動に失敗します。手順 2 の配置を先に行ってください。
+# デバイスへ配置（build-webui を実行してから www へ push）
+make push-webui ADB_TARGET=<デバイスのIPアドレス>:5555
+make push-config ADB_TARGET=<デバイスのIPアドレス>:5555
+make restart ADB_TARGET=<デバイスのIPアドレス>:5555
+```
 
-4. 設定を反映して再起動:
-   ```sh
-   make push-config
-   make restart
-   ```
+`config/config.yml` の `server.mounts` で `/www` → `/data/local/tmp/mirakc/www` にマウント済みです
+（`/www` の実体がない状態で起動すると mirakc は起動に失敗するため、`make push-webui` を先に実行してください）。
+`make deploy-mirakc` / `make push-all` は Web UI のビルドと push も行うため、これらを使う場合は個別操作は不要です。
 
-5. ブラウザで開く: `http://<デバイスのIPアドレス>:40772/www`
-   - **末尾にスラッシュを付けない**（`/www/` は 404。mounts 仕様）
-   - same-origin 配信のみ対応（API `/api/...` と SSE `/events` がオリジンルート絶対のため、リバースプロキシのサブパス配下では動きません）
+### アクセス
 
-機能: ステータス（バージョン・サービスグリッド・チューナー）、イベント（SSE、最大200件）、接続ガイド。
+```
+http://<デバイスのIPアドレス>:40772/www
+```
+
+- 末尾にスラッシュを付けない（`/www/` は 404。mounts 仕様）
+- same-origin 配信のみ対応（API `/api/...` と SSE `/events` がオリジンルート絶対のため、リバースプロキシのサブパス配下では動きません）
+
+> ビルド元のリポジトリ・ブランチ・タグは `MIRAKC_WEBUI_REPO` / `MIRAKC_WEBUI_REF` で切り替えられます
+> （既定: `https://github.com/yuchi0531/mirakc-webui.git` の `main`）。
 
 ---
 
@@ -656,11 +651,12 @@ curl -s http://<デバイスのIPアドレス>:40772/api/services | python3 -m j
 
 ```sh
 make build-bins          # チューナー/デコーダバイナリをビルド
-make fetch-mirakc-armv7  # mirakc 3バイナリを GitHub Release から取得（通常はこちら）
-make build-mirakc-armv7  # mirakc 3バイナリを ARMv7 向けに再ビルド（任意）
-make deploy-mirakc       # mirakc 本体・設定をデプロイ
+make build-mirakc-armv7  # mirakc 3バイナリ (mirakc-BS4K fork) をソースからビルド
+make build-webui         # mirakc WebUI (mirakc-webui) をソースからビルド
+make deploy-mirakc       # mirakc 本体・設定・Web UI をデプロイ
 make setup-runtime       # Alpine rootfs + glibc ランタイムを構築
-make push-all            # チューナーバイナリ・mirakc バイナリ・スクリプト・設定を更新
+make push-all            # チューナーバイナリ・mirakc バイナリ・スクリプト・設定・Web UI を更新
+make push-webui          # Web UI のみ配備
 make start               # mirakc 起動
 make stop                # 停止（チューナー・デスクランブラーも含む）
 make restart             # 再起動
@@ -716,17 +712,14 @@ adb -s <デバイスのIPアドレス>:5555 shell "tail -20 /data/local/tmp/cras
 adb -s <デバイスのIPアドレス>:5555 shell "grep MemAvailable /proc/meminfo"
 ```
 
-### mirakc バイナリの取得に失敗する（fetch）
+### mirakc バイナリのビルドに失敗する（build）
 
-`make fetch-mirakc-armv7` が失敗する場合:
+`make build-mirakc-armv7` が失敗する場合:
 
-- **ネットワーク / GitHub に到達できない**: `curl -fL https://github.com/yuchi0531/mirakc-BS4K/releases/download/smb400-armv7-v1/SHA256SUMS` で疎通確認してください。プロキシ環境では `https_proxy` 等を設定します。
-- **SHA256 不一致**: ダウンロードが壊れている可能性があります。`FORCE=1 make fetch-mirakc-armv7` で再取得してください。
-- どうしても取得できない場合は、ソースからビルドできます（クロスビルド環境が必要）:
-
-```sh
-make build-mirakc-armv7
-```
+- **ツール不足**: `cargo` / `rustup` / `arm-linux-gnueabihf-gcc` / `cmake` / `ninja` が必要です。冒頭の前提チェックのメッセージに従ってインストールしてください（Dev Container なら導入済み）。
+- **rust target 不足**: スクリプトが自動で `rustup target add armv7-unknown-linux-gnueabihf` を実行します。手動なら `rustup target add armv7-unknown-linux-gnueabihf`。
+- **ネットワーク / GitHub に到達できない**: `git clone` に失敗します。プロキシ環境では `https_proxy` 等を設定します。
+- ソースのコミットは `MIRAKC_REF` / `MIRAKC_TLV_REF` / `MIRAKC_ARIB_REF` で固定されています（`scripts/build_mirakc_armv7.sh` 冒頭）。
 
 ### mirakc が起動しない
 
