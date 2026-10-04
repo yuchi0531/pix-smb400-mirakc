@@ -8,17 +8,22 @@
 #   slab/pagetables and bricked the device (required USB rescue boot).
 #
 # This watchdog runs OUTSIDE the Alpine chroot, in the Android shell, as a
-# lightweight independent loop. It does three things every POLL seconds:
+# lightweight independent loop. It does four things every POLL seconds:
 #   1. If crash_dump32 count > CD_MAX  -> kill the chain + mirakc.
 #   2. If MemAvailable < MEM_SOFT_KB   -> run stop_android_tv.sh to reclaim
 #      memory from restarted Android TV apps (they drift back over time).
 #   3. If MemAvailable < MEM_FLOOR_KB  -> kill mirakc as last resort before OOM.
+#   4. If tuner child processes pile up -> kill the stale ones.  When EPG jobs
+#      cannot lock the (single) tuner, tuner-stream-*/b21dec/b61dec/tunertest
+#      linger and new ones spawn; left unchecked this snowballs into the
+#      load-17 / unresponsive state seen on 2026-10-05.
 
 POLL=5                 # seconds between checks
 CD_MAX=4               # max tolerated concurrent crash_dump32 processes
 MEM_SOFT_KB=600000     # reclaim from Android TV apps when below this (kB)
 MEM_FLOOR_KB=350000    # kill mirakc if MemAvailable still below this after reclaim
 RECLAIM_COOLDOWN=120   # minimum seconds between stop_android_tv.sh calls
+TUNER_PROC_MAX=12      # max tolerated tuner child processes (1 job ≈ 4-6 with sh wrappers)
 STOP_ATV=/data/local/tmp/stop_android_tv.sh
 LOG=/data/local/tmp/crash_guard.log
 
@@ -31,7 +36,7 @@ renice -n -5 $$ 2>/dev/null || true
 # Record our PID for the singleton check in start_mirakc.sh.
 echo $$ > /data/local/tmp/crash_guard.pid
 
-echo "[crash_guard] started pid=$$ POLL=${POLL}s CD_MAX=${CD_MAX} MEM_SOFT=${MEM_SOFT_KB}kB MEM_FLOOR=${MEM_FLOOR_KB}kB" >> "$LOG"
+echo "[crash_guard] started pid=$$ POLL=${POLL}s CD_MAX=${CD_MAX} MEM_SOFT=${MEM_SOFT_KB}kB MEM_FLOOR=${MEM_FLOOR_KB}kB TUNER_MAX=${TUNER_PROC_MAX}" >> "$LOG"
 
 last_reclaim=0
 
@@ -63,6 +68,20 @@ while true; do
         echo "[crash_guard] MemAvailable=${mem}kB < ${MEM_FLOOR_KB}kB — killing mirakc to prevent OOM" >> "$LOG"
         pkill -9 -f "/data/local/tmp/mirakc/bin/mirakc" 2>/dev/null
         pkill -9 crash_dump32 2>/dev/null
+    fi
+
+    # --- 4. tuner child process pile-up ---
+    # A single EPG job spawns a tuner-stream-* + decoder (+ tunertest) chain.
+    # If the tuner cannot be locked, these linger and accumulate; kill the
+    # whole chain (and abort the stuck job by restarting mirakc's tuner path)
+    # once too many are alive at once.
+    tuner_count=$(pgrep -f "tuner-stream|b21dec|b61dec|tunertest" 2>/dev/null | wc -l)
+    if [ "$tuner_count" -gt "$TUNER_PROC_MAX" ]; then
+        echo "[crash_guard] tuner child count=$tuner_count > $TUNER_PROC_MAX — killing stale tuner chain" >> "$LOG"
+        pkill -9 -f "tuner-stream" 2>/dev/null
+        pkill -9 b21dec 2>/dev/null
+        pkill -9 b61dec 2>/dev/null
+        pkill -9 tunertest 2>/dev/null
     fi
 
     sleep "$POLL"
