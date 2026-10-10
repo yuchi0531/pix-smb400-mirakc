@@ -136,6 +136,28 @@ else
     echo "[mirakc] crash_guard already running (pid=$gp)" >> "$LOG"
 fi
 
+# --- Launch the heartbeat forensic logger (independent of mirakc) ---
+# This device keeps no kernel log across a hang (pstore/ramoops disabled,
+# logd stopped), so a freeze leaves no evidence.  heartbeat.sh appends one
+# line per interval (uptime/load/memory/tuner procs/D-state/top RSS) to
+# /data/local/tmp/heartbeat.log, so the last line before a freeze shows what
+# was happening.  It only reads /proc and /sys — it never touches mirakc.
+HB=/data/local/tmp/heartbeat.sh
+HB_PID=/data/local/tmp/heartbeat.pid
+hb_running=0
+if [ -f "$HB_PID" ]; then
+    hp=$(cat "$HB_PID" 2>/dev/null)
+    if [ -n "$hp" ] && kill -0 "$hp" 2>/dev/null; then
+        hb_running=1
+    fi
+fi
+if [ "$hb_running" = 0 ]; then
+    setsid sh "$HB" >> /data/local/tmp/heartbeat.log 2>&1 &
+    echo "[mirakc] heartbeat logger launched (pid=$!)" >> "$LOG"
+else
+    echo "[mirakc] heartbeat already running (pid=$hp)" >> "$LOG"
+fi
+
 echo "[mirakc] Starting mirakc via chroot + Alpine ARM32 (glibc runtime)..." >> "$LOG"
 
 # Ensure the mirakc bind mount is present right before launch.

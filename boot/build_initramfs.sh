@@ -66,6 +66,7 @@ check_sync() {
 }
 check_sync "$SCRIPT_DIR/../scripts/smb400-tuner.sh"    "$OVERLAY_DIR/smb400_tuner.sh"
 check_sync "$SCRIPT_DIR/../scripts/crash_guard.sh"     "$OVERLAY_DIR/crash_guard.sh"
+check_sync "$SCRIPT_DIR/../scripts/heartbeat.sh"       "$OVERLAY_DIR/heartbeat.sh"
 check_sync "$SCRIPT_DIR/../scripts/stop_android_tv.sh" "$OVERLAY_DIR/stop_android_tv.sh"
 if [ "$SYNC_FAILED" -ne 0 ]; then
     exit 1
@@ -103,6 +104,7 @@ cp "$OVERLAY_DIR/initrc/logd.rc"        "$WORK_DIR/initrc/logd.rc"
 # デバイス起動時に /data/local/tmp/ に自動デプロイされるスクリプト群
 cp "$OVERLAY_DIR/start_mirakc.sh"    "$WORK_DIR/start_mirakc.sh"
 cp "$OVERLAY_DIR/crash_guard.sh"     "$WORK_DIR/crash_guard.sh"
+cp "$OVERLAY_DIR/heartbeat.sh"       "$WORK_DIR/heartbeat.sh"
 cp "$OVERLAY_DIR/stop_android_tv.sh" "$WORK_DIR/stop_android_tv.sh"
 cp "$OVERLAY_DIR/smb400_tuner.sh"    "$WORK_DIR/smb400_tuner.sh"
 

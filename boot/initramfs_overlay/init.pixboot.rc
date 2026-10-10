@@ -22,6 +22,8 @@ on post-fs-data
     chmod 0755 /data/local/tmp/start_mirakc.sh
     copy /crash_guard.sh     /data/local/tmp/crash_guard.sh
     chmod 0755 /data/local/tmp/crash_guard.sh
+    copy /heartbeat.sh       /data/local/tmp/heartbeat.sh
+    chmod 0755 /data/local/tmp/heartbeat.sh
     copy /stop_android_tv.sh /data/local/tmp/stop_android_tv.sh
     chmod 0755 /data/local/tmp/stop_android_tv.sh
     copy /smb400_tuner.sh    /data/local/tmp/smb400-tuner.sh
