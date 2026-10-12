@@ -285,8 +285,8 @@ test:
 # CS ND02 から 5 秒受信して MPEG-TS の先頭バイトを表示
 # 正常: 47 (TS同期バイト)。復号可否はACAS契約・EMM状態に依存する。
 test-cs:
-	@echo "Streaming CS ND02 for 5s..."
-	@curl -s --max-time 8 http://$(DEVICE_IP):40772/api/channels/CS/ND02/stream \
+	@echo "Streaming CS CS2 for 5s..."
+	@curl -s --max-time 8 http://$(DEVICE_IP):40772/api/channels/CS/CS2/stream \
 	    | od -v -t x1 2>/dev/null | head -4
 
 # ---- ヘルプ ----

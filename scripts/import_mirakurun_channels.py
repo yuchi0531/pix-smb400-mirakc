@@ -12,7 +12,7 @@ services.json (EPG キャッシュ) を生成する。
   GR   : そのまま (物理チャンネル番号)
   BS   : BSxx_y のまま。scripts/smb400-tuner.sh の TSID 表にあるものだけ採用。
          表に無い (= 本機で受信できない) ものは除外。
-  CS   : CSn → NDnn (偶数スロットのみ)
+  CS   : CSn のまま (recpt1 互換。偶数スロットのみ採用)
   BS4K : 5桁 StreamID のまま
   BS8K : .111 に無いため base-config の 45280 エントリを引き継ぐ (services.json には入れない)
 
@@ -44,7 +44,7 @@ GROUP_TITLES = {
 GROUP_NOTES = {
     "GR": "channel = 物理チャンネル番号 (13-62)。services は .111 の実測 SDT 由来。",
     "BS": "channel = BSxx_y (xx=トランスポンダ番号, y=相対TS)。smb400-tuner.sh の TSID 表にあるもののみ。",
-    "CS": "channel = NDxx (xx=偶数トランスポンダ番号)。",
+    "CS": "channel = CSn (n=偶数トランスポンダ番号 2-24, recpt1 互換)。",
     "BS4K": "channel = 5桁 StreamID。BS8K (45280) は .111 に無いため現行 config から引き継ぎ。",
 }
 
@@ -55,15 +55,15 @@ def parse_bs_tsid_channels(tuner_script):
     return set(pattern.findall(tuner_script.read_text(encoding="utf-8")))
 
 
-def cs_to_nd(channel):
-    """'CS2' -> 'ND02'。奇数スロットや形式違いは None。"""
+def cs_to_recpt1(channel):
+    """'CS2' -> 'CS2' (recpt1 互換)。奇数スロットや形式違いは None。"""
     m = re.fullmatch(r"CS(\d+)", str(channel))
     if not m:
         return None
     n = int(m.group(1))
     if n % 2 != 0:
         return None
-    return f"ND{n:02d}"
+    return f"CS{n}"
 
 
 def channel_sort_key(channel):
@@ -91,10 +91,39 @@ def load_channel_names(channels_yml):
     return names
 
 
-def build_channels(api_entries, bs_allowed, channel_names):
+def load_channel_services(channels_yml):
+    """.111 原本 channels.yml から (type, channel) -> [(sid, name), ...] を作る。
+
+    api-channels.json は一部チャンネル (BS09_2 / BS23_3 など) の services を
+    空で返すことがあるが、channels.yml 側には serviceId が残っている。ここで
+    補完できるようにしておく。
+    """
+    if channels_yml is None:
+        return {}
+    entries = yaml.safe_load(channels_yml.read_text(encoding="utf-8")) or []
+    svc = {}
+    for entry in entries:
+        sid = entry.get("serviceId")
+        if sid is None:
+            continue
+        key = (entry["type"], str(entry["channel"]))
+        svc.setdefault(key, {})[int(sid)] = entry["name"]
+    return svc
+
+
+def build_channels(api_entries, bs_allowed, channel_names, channel_services):
     """API エントリを mirakc チャンネル定義へ変換し、除外一覧も返す。"""
     channels = []
     excluded = []
+
+    # type ごとの代表 NID。api-channels.json が services を空で返すチャンネル
+    # (BS09_2, BS23_3) を channels.yml の serviceId で補完する際、NID が無いので
+    # 同一 type の他エントリから流用する (BS は全国一律 NID=4)。
+    type_nid = {}
+    for e in api_entries:
+        for svc in e.get("services", []):
+            type_nid.setdefault(e["type"], int(svc["networkId"]))
+
     for entry in api_entries:
         ctype = entry["type"]
         src = str(entry["channel"])
@@ -107,7 +136,7 @@ def build_channels(api_entries, bs_allowed, channel_names):
                 continue
             channel = src
         elif ctype == "CS":
-            channel = cs_to_nd(src)
+            channel = cs_to_recpt1(src)
             if channel is None:
                 excluded.append((ctype, src, "偶数スロットの CSn ではない"))
                 continue
@@ -126,6 +155,13 @@ def build_channels(api_entries, bs_allowed, channel_names):
                 "nid": int(svc["networkId"]),
                 "name": svc["name"],
             }
+        # api-channels.json が services を空で返すチャンネル (例: BS09_2, BS23_3)
+        # は channels.yml の serviceId で補完する。NID は無いので同一 type の
+        # 代表 NID を流用する (BS は全国一律 NID=4)。
+        if not services:
+            nid = type_nid.get(ctype)
+            for sid, sname in (channel_services.get((ctype, src)) or {}).items():
+                services[sid] = {"sid": sid, "nid": nid, "name": sname}
         service_list = [services[sid] for sid in sorted(services)]
 
         # Mirakurun は serviceId 付きチャンネルの name を "TYPE:channel" に上書き
@@ -318,8 +354,13 @@ def main():
     channel_names = load_channel_names(
         args.channels_yml if args.channels_yml.exists() else None
     )
+    channel_services = load_channel_services(
+        args.channels_yml if args.channels_yml.exists() else None
+    )
 
-    channels, excluded = build_channels(api_entries, bs_allowed, channel_names)
+    channels, excluded = build_channels(
+        api_entries, bs_allowed, channel_names, channel_services
+    )
     channels = append_bs8k(channels, base_config)
     channels = sort_channels(channels)
 

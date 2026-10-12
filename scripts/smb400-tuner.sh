@@ -39,15 +39,15 @@ case "$CHANNEL" in
         # _y(相対インデックス)ではなく実 MPEG TS-ID で TS を選択する。全国共通の
         # BS TS-ID 表（実機 NIT から導出, 2026-06-21）で BSxx_y → TS-ID を引く。
         case "$CHANNEL" in
-            BS01_0) TSID=16400 ;;  BS01_1) TSID=16401 ;;  BS01_2) TSID=16402 ;;
-            BS03_0) TSID=16432 ;;  BS03_1) TSID=17969 ;;  BS03_2) TSID=17970 ;;
-            BS05_0) TSID=17488 ;;  BS05_1) TSID=17489 ;;
-            BS09_0) TSID=16528 ;;  BS09_2) TSID=16530 ;;
-            BS13_0) TSID=16592 ;;  BS13_1) TSID=16593 ;;  BS13_2) TSID=18130 ;;
+            BS01_0) TSID=16400 ;;  BS01_1) TSID=16401 ;;  BS01_2) TSID=16402 ;;  BS01_3) TSID=16400 ;;
+            BS03_0) TSID=16432 ;;  BS03_1) TSID=17969 ;;  BS03_2) TSID=17970 ;;  BS03_3) TSID=16432 ;;
+            BS05_0) TSID=17488 ;;  BS05_1) TSID=17489 ;;  BS05_2) TSID=17488 ;;  BS05_3) TSID=17488 ;;
+            BS09_0) TSID=16528 ;;  BS09_1) TSID=16529 ;;  BS09_2) TSID=16530 ;;  BS09_3) TSID=16528 ;;
+            BS13_0) TSID=16592 ;;  BS13_1) TSID=16593 ;;  BS13_2) TSID=18130 ;;  BS13_3) TSID=16592 ;;
             BS15_0) TSID=16625 ;;  BS15_1) TSID=16626 ;;  BS15_2) TSID=18675 ;;
             BS19_0) TSID=18224 ;;  BS19_1) TSID=18225 ;;  BS19_2) TSID=18226 ;;  BS19_3) TSID=18227 ;;
-            BS21_0) TSID=18256 ;;  BS21_1) TSID=18257 ;;  BS21_2) TSID=18258 ;;
-            BS23_0) TSID=18288 ;;  BS23_1) TSID=18801 ;;  BS23_3) TSID=18803 ;;
+            BS21_0) TSID=18256 ;;  BS21_1) TSID=18257 ;;  BS21_2) TSID=18258 ;;  BS21_3) TSID=18256 ;;
+            BS23_0) TSID=18288 ;;  BS23_1) TSID=18801 ;;  BS23_2) TSID=18802 ;;  BS23_3) TSID=18803 ;;
             *)      TSID= ;;       # 未知: TSID テーブルに載っていない = 存在しないチャンネル
         esac
         # TSID 未定義 (偶数 TP や TS インデックス超過など) は即終了。
@@ -78,20 +78,25 @@ case "$CHANNEL" in
         pkill -9 -f "tuner-stream-bs-ng 0 1 $IF_KHZ" 2>/dev/null || true
         pkill -9 tunertest 2>/dev/null || true
         ;;
-    ND[0-9][0-9])
-        # CS (110度CS, ISDB-S 2K相当): NDxx (xx=偶数トランスポンダ番号)。
-        # IF = 1613000 + (xx-2)/2 * 40000 kHz。1トランスポンダ=単一TSで
+    CS[0-9]|CS1[0-9]|CS2[0-4]|ND[0-9][0-9])
+        # CS (110度CS, ISDB-S 2K相当)。チャンネル名は recpt1 互換の CSn
+        # (n=偶数トランスポンダ番号 2-24)。後方互換のため旧 NDxx も受理する。
+        # IF = 1613000 + (n-2)/2 * 40000 kHz。1トランスポンダ=単一TSで
         # 複数サービスが通常のMPTSとして多重されているため、BSのようなTSID対応表は不要。
         # streamId=0(auto)で受かる。BS(2K)と同じ b21dec 経路で復号。
-        NDSTR=${CHANNEL#ND}
-        case "$NDSTR" in
+        case "$CHANNEL" in
+            CS*) NSTR=${CHANNEL#CS} ;;
+            ND*) NSTR=${CHANNEL#ND} ;;
+        esac
+        case "$NSTR" in
+            2|4|6|8|10|12|14|16|18|20|22|24) ;;
             02|04|06|08|10|12|14|16|18|20|22|24) ;;
             *)
-                echo "smb400-tuner.sh: unknown CS channel '$CHANNEL' (expected ND02-ND24 even)" >&2
+                echo "smb400-tuner.sh: unknown CS channel '$CHANNEL' (expected CS2-CS24 even)" >&2
                 exit 1
                 ;;
         esac
-        ND=$((10#$NDSTR)) # strip leading zero, force base10
+        ND=$((10#$NSTR)) # strip leading zero, force base10
         IF_KHZ=$((1613000 + (ND - 2) / 2 * 40000))
         chroot /proc/1/root /system/bin/sh -c \
             "$BINDIR/tuner-stream-bs-ng 0 1 $IF_KHZ 0 | $BINDIR/b21dec" &

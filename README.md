@@ -552,11 +552,11 @@ ffprobe nhkbs.ts          # mpeg2video 1440x1080 + aac が見えれば復号成�
 ffplay  "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/stream"
 ```
 
-110 度 CS（ISDB-S 2K 相当）も BS と同じ経路（`tuner-stream-bs-ng` mode=1 → `b21dec`）で受信します。`config/config.yml` には .111 からインポートした CS チャンネル（ND02〜ND24、実測 services 付き）が含まれます（`make test-cs` が CS/ND02 を叩きます）。
+110 度 CS（ISDB-S 2K 相当）も BS と同じ経路（`tuner-stream-bs-ng` mode=1 → `b21dec`）で受信します。`config/config.yml` には .111 からインポートした CS チャンネル（CS2〜CS24, recpt1 互換、実測 services 付き）が含まれます（`make test-cs` が CS/CS2 を叩きます）。
 
 | name | type | channel |
 |------|------|---------|
-| CS ND02 | CS | ND02 |
+| CS2 | CS | CS2 |
 
 > 2K BS は受信できるトランスポンダ・サービスが地域/契約により異なります。
 > `config/config.yml` の `tuners[].types` で `BS` タイプが有効になっている必要があります（本リポジトリでは有効化済み）。
@@ -662,7 +662,7 @@ make stop                # 停止（チューナー・デスクランブラー�
 make restart             # 再起動
 make log                 # ログ確認（最新 50 行）
 make test                # BS4K 疎通テスト
-make test-cs             # CS ND02 疎通テスト
+make test-cs             # CS CS2 疎通テスト
 
 # デバイスの IP アドレスを指定する場合
 make start ADB_TARGET=192.168.1.100:5555

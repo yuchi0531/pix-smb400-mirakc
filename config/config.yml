@@ -130,6 +130,7 @@ channels:
   - name: "ＢＳ１１イレブン"
     type: BS
     channel: "BS09_2"
+    services: [211]
   - name: "ＢＳ日テレ"
     type: BS
     channel: "BS13_0"
@@ -193,55 +194,92 @@ channels:
   - name: "ディズニーｃｈ"
     type: BS
     channel: "BS23_3"
+    services: [256]
+  - name: "ＢＳ朝日１"
+    type: BS
+    channel: "BS01_3"
+    services: [151, 152, 153]
+  - name: "ＷＯＷＯＷプライム"
+    type: BS
+    channel: "BS03_3"
+    services: [191]
+  - name: "ＷＯＷＯＷライブ"
+    type: BS
+    channel: "BS05_2"
+    services: [192]
+  - name: "ＷＯＷＯＷライブ"
+    type: BS
+    channel: "BS05_3"
+    services: [192]
+  - name: "ＢＳ１２トゥエルビ"
+    type: BS
+    channel: "BS09_1"
+    services: [222]
+  - name: "ＢＳ１１イレブン"
+    type: BS
+    channel: "BS09_3"
+    services: [211]
+  - name: "ＢＳ日テレ"
+    type: BS
+    channel: "BS13_3"
+    services: [141, 142, 143]
+  - name: "ＷＯＷＯＷプラス"
+    type: BS
+    channel: "BS21_3"
+    services: [252]
+  - name: "Ｊ：ＣＯＭ　ＢＳ"
+    type: BS
+    channel: "BS23_2"
+    services: [260]
   # --- CS (110度CS) ---
-  # channel = NDxx (xx=偶数トランスポンダ番号)。
+  # channel = CSn (n=偶数トランスポンダ番号 2-24, recpt1 互換)。
   - name: "ＴＢＳチャンネル１"
     type: CS
-    channel: "ND02"
+    channel: "CS2"
     services: [296, 298, 299, 339]
   - name: "スカイＡ"
     type: CS
-    channel: "ND04"
+    channel: "CS4"
     services: [250, 292, 301, 323]
   - name: "ホームドラマＣＨ"
     type: CS
-    channel: "ND06"
+    channel: "CS6"
     services: [294, 324, 329, 331, 340, 341, 354, 363]
   - name: "ショップチャンネル"
     type: CS
-    channel: "ND08"
+    channel: "CS8"
     services: [55, 218, 318, 349]
   - name: "衛星劇場"
     type: CS
-    channel: "ND10"
+    channel: "CS10"
     services: [219, 317, 800, 801]
   - name: "ＧＡＯＲＡ"
     type: CS
-    channel: "ND12"
+    channel: "CS12"
     services: [254, 325, 330, 343]
   - name: "ザ・シネマ"
     type: CS
-    channel: "ND14"
+    channel: "CS14"
     services: [227, 293, 310, 342]
   - name: "ＳＫＹ　ＳＴＡＧＥ"
     type: CS
-    channel: "ND16"
+    channel: "CS16"
     services: [290, 311, 316, 321, 333, 353]
   - name: "ムービープラス"
     type: CS
-    channel: "ND18"
+    channel: "CS18"
     services: [240, 262, 305, 314]
   - name: "フジテレビＯＮＥ"
     type: CS
-    channel: "ND20"
+    channel: "CS20"
     services: [307, 308, 309, 322]
   - name: "ＱＶＣ"
     type: CS
-    channel: "ND22"
+    channel: "CS22"
     services: [161, 297, 312, 351]
   - name: "映画・ｃｈＮＥＣＯ"
     type: CS
-    channel: "ND24"
+    channel: "CS24"
     services: [223, 257, 295, 300]
   # --- BS4K / BS8K (ISDB-S3) ---
   # channel = 5桁 StreamID。BS8K (45280) は .111 に無いため現行 config から引き継ぎ。
