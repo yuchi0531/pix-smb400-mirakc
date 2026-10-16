@@ -38,16 +38,19 @@ case "$CHANNEL" in
         # 1 トランスポンダに複数の相対 TS が多重されており、tunertest(mode=1) は
         # _y(相対インデックス)ではなく実 MPEG TS-ID で TS を選択する。全国共通の
         # BS TS-ID 表（実機 NIT から導出, 2026-06-21）で BSxx_y → TS-ID を引く。
+        # TSID は recpt1/recisdb の実測値 (Qiita: yuriyuriyuriyuri「Mirakurunのチャンネル手動設定」)。
+        # BSxx_y の y はトランスポンダ内の並び順ラベルに過ぎず、実体はこの TSID で決まる。
+        # 別名チャンネル (サブ) はサービスが同じ TS なので親と同一 TSID にする。
         case "$CHANNEL" in
             BS01_0) TSID=16400 ;;  BS01_1) TSID=16401 ;;  BS01_2) TSID=16402 ;;  BS01_3) TSID=16400 ;;
             BS03_0) TSID=16432 ;;  BS03_1) TSID=17969 ;;  BS03_2) TSID=17970 ;;  BS03_3) TSID=16432 ;;
             BS05_0) TSID=17488 ;;  BS05_1) TSID=17489 ;;  BS05_2) TSID=17488 ;;  BS05_3) TSID=17488 ;;
-            BS09_0) TSID=16528 ;;  BS09_1) TSID=16529 ;;  BS09_2) TSID=16530 ;;  BS09_3) TSID=16528 ;;
+            BS09_0) TSID=16528 ;;  BS09_1) TSID=16530 ;;  BS09_2) TSID=16528 ;;  BS09_3) TSID=16528 ;;
             BS13_0) TSID=16592 ;;  BS13_1) TSID=16593 ;;  BS13_2) TSID=18130 ;;  BS13_3) TSID=16592 ;;
             BS15_0) TSID=16625 ;;  BS15_1) TSID=16626 ;;  BS15_2) TSID=18675 ;;
             BS19_0) TSID=18224 ;;  BS19_1) TSID=18225 ;;  BS19_2) TSID=18226 ;;  BS19_3) TSID=18227 ;;
             BS21_0) TSID=18256 ;;  BS21_1) TSID=18257 ;;  BS21_2) TSID=18258 ;;  BS21_3) TSID=18256 ;;
-            BS23_0) TSID=18288 ;;  BS23_1) TSID=18801 ;;  BS23_2) TSID=18802 ;;  BS23_3) TSID=18803 ;;
+            BS23_0) TSID=18288 ;;  BS23_1) TSID=18801 ;;  BS23_2) TSID=18803 ;;  BS23_3) TSID=18288 ;;
             *)      TSID= ;;       # 未知: TSID テーブルに載っていない = 存在しないチャンネル
         esac
         # TSID 未定義 (偶数 TP や TS インデックス超過など) は即終了。
