@@ -33,12 +33,12 @@ OUT_DIR="$REPO_ROOT/tmp/mirakc-armv7"
 TARGET=armv7-unknown-linux-gnueabihf
 
 MIRAKC_REPO="${MIRAKC_REPO:-https://github.com/yuchi0531/mirakc-BS4K.git}"
-MIRAKC_REF="${MIRAKC_REF:-994b493cabb21c80a325a71973120549e98abc27}" # SIGTERM 対応コミット
+MIRAKC_REF="${MIRAKC_REF:-main}" # fork の最新。固定したい場合はコミット/タグを指定
 MIRAKC_TLV_REPO="${MIRAKC_TLV_REPO:-https://github.com/yuchi0531/mirakc-arib-tlv.git}"
 MIRAKC_TLV_REF="${MIRAKC_TLV_REF:-v0.1.0}"
 MIRAKC_ARIB_REPO="${MIRAKC_ARIB_REPO:-https://github.com/mirakc/mirakc-arib.git}"
-# mirakc-arib 上流 v0.24.37 (= 確認元: /mnt/dev/build/mirakc-arib-src)
-MIRAKC_ARIB_REF="${MIRAKC_ARIB_REF:-6fef5309b9d93868cbfad37c8a0c4537742f6501}"
+# mirakc-arib の最新リリースタグ (0.24.40, 2026-10-15)
+MIRAKC_ARIB_REF="${MIRAKC_ARIB_REF:-0.24.40}"
 
 fail() {
     echo "[!] $*" >&2
@@ -65,8 +65,13 @@ for tool in arm-linux-gnueabihf-gcc arm-linux-gnueabihf-g++ arm-linux-gnueabihf-
 done
 
 # mirakc-arib のビルドに必要なツール
-command -v cmake >/dev/null 2>&1 || fail "cmake が見つかりません (sudo apt install cmake)"
-command -v ninja >/dev/null 2>&1 || fail "ninja が見つかりません (sudo apt install ninja-build)"
+#   cmake/ninja: トップレベルのビルド
+#   autoconf/automake/libtool/pkg-config: vendor/aribb24 の ./bootstrap (autoreconf) 用
+#   patch: vendor/spdlog, vendor/libisdb のビルド時パッチ用
+for tool in cmake ninja autoreconf automake libtoolize pkg-config patch; do
+    command -v "$tool" >/dev/null 2>&1 || fail "$tool が見つかりません。
+    sudo apt install cmake ninja-build autoconf automake libtool pkg-config patch"
+done
 
 # rust target
 if ! rustup target list --installed 2>/dev/null | grep -qx "$TARGET"; then
@@ -79,6 +84,23 @@ mkdir -p "$OUT_DIR" "$WORK_DIR"
 # mirakc / mirakc-arib-tlv は cargo のリンカ設定でクロス GCC を指定する。
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER="${CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER:-arm-linux-gnueabihf-gcc}"
 
+# ref を解決して detached HEAD でチェックアウトする。
+#   - ブランチ名なら origin/<ref> を優先（fetch はローカルブランチを更新しないため）
+#   - タグ / コミットハッシュならそのまま
+#   - 解決できなければ fail（古い HEAD のまま進まない）
+checkout_ref() {
+    local dir="$1" ref="$2" target
+    if git -C "$dir" rev-parse --verify -q "origin/$ref^{commit}" >/dev/null 2>&1; then
+        target="origin/$ref"
+    elif git -C "$dir" rev-parse --verify -q "$ref^{commit}" >/dev/null 2>&1; then
+        target="$ref"
+    else
+        fail "ref '$ref' が $dir に見つかりません (fetch 済みか確認してください)"
+    fi
+    git -C "$dir" checkout --detach -q "$target"
+    git -C "$dir" log -1 --format='    %h %s (%ci)'
+}
+
 # ------------------------------------------------------------------- mirakc
 step "mirakc ($MIRAKC_REF)"
 
@@ -87,7 +109,7 @@ if [ ! -d "$MIRAKC_SRC/.git" ]; then
     git clone "$MIRAKC_REPO" "$MIRAKC_SRC"
 fi
 git -C "$MIRAKC_SRC" fetch --tags origin
-git -C "$MIRAKC_SRC" checkout --detach "$MIRAKC_REF"
+checkout_ref "$MIRAKC_SRC" "$MIRAKC_REF"
 
 # workspace 既定は lto=true。通常 LTO はメモリを大量消費するため thin LTO を使う。
 # (CARGO_PROFILE_RELEASE_LTO=thin は環境変数で profile.release.lto を上書きする)
@@ -105,7 +127,7 @@ if [ ! -d "$TLV_SRC/.git" ]; then
     git clone "$MIRAKC_TLV_REPO" "$TLV_SRC"
 fi
 git -C "$TLV_SRC" fetch --tags origin
-git -C "$TLV_SRC" checkout --detach "$MIRAKC_TLV_REF"
+checkout_ref "$TLV_SRC" "$MIRAKC_TLV_REF"
 
 (
     cd "$TLV_SRC"
@@ -121,14 +143,23 @@ if [ ! -d "$ARIB_SRC/.git" ]; then
     git clone "$MIRAKC_ARIB_REPO" "$ARIB_SRC"
 fi
 git -C "$ARIB_SRC" fetch --tags origin
-git -C "$ARIB_SRC" checkout --detach "$MIRAKC_ARIB_REF"
+checkout_ref "$ARIB_SRC" "$MIRAKC_ARIB_REF"
 git -C "$ARIB_SRC" submodule update --init --recursive
 
 (
     cd "$ARIB_SRC"
+    # vendor/aribb24 は ./bootstrap (autoreconf --install) → ./configure で
+    # ビルドされるため autotools が必要。--no-install-recommends の
+    # コンテナでは自動では入らないので Dockerfile 側で導入している。
+    # テスト系を切る指定を明示しておく（-D BUILD_TESTING / CPPCODEC_BUILD_* は
+    # 固定 submodule では未定義だが、上流更新時に効くよう渡しておく）。
     cmake -S . -B build -G Ninja \
         -D CMAKE_BUILD_TYPE=Release \
         -D MIRAKC_ARIB_TEST=OFF \
+        -D MIRAKC_ARIB_VENDOR_TEST=OFF \
+        -D BUILD_TESTING=OFF \
+        -D CPPCODEC_BUILD_TESTS=OFF \
+        -D CPPCODEC_BUILD_TOOLS=OFF \
         -D CMAKE_TOOLCHAIN_FILE="$PWD/toolchain.cmake.d/debian-armhf.cmake"
     ninja -C build vendor
     ninja -C build

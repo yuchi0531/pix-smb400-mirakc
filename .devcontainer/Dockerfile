@@ -17,6 +17,12 @@ FROM mcr.microsoft.com/devcontainers/base:trixie
 #   binutils-arm-linux-gnueabihf : ARMv7 (armhf) cross toolchain for mirakc
 #                            (make build-mirakc-armv7 cross-builds the mirakc-BS4K fork)
 #   cmake + ninja-build    : mirakc-arib build (part of make build-mirakc-armv7)
+#   autoconf + automake + libtool + pkg-config + patch :
+#                            mirakc-arib vendors aribb24, which is built with
+#                            ./bootstrap (autoreconf --install) + ./configure;
+#                            spdlog/LibISDB are patched at build time.
+#                            These are Recommends/Suggests of other packages,
+#                            so --no-install-recommends requires listing them.
 #
 # Rust (rustup) and Node.js are provided by devcontainer features (see
 # devcontainer.json): the Rust toolchain for mirakc, Node for mirakc-webui.
@@ -41,5 +47,10 @@ RUN apt-get update \
         binutils-arm-linux-gnueabihf \
         cmake \
         ninja-build \
+        autoconf \
+        automake \
+        libtool \
+        pkg-config \
+        patch \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*

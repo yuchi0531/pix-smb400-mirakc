@@ -54,7 +54,7 @@ Part 3: 起動・確認
 | 作業コピー | 本リポジトリ（`git clone https://github.com/yuchi0531/pix-smb400-mirakc`）。以降のコマンドは clone したディレクトリのルートで実行 |
 | PIX-SMB400 本体 | USB ブートピンにアクセスできる状態 |
 | USB メモリ | FAT32 フォーマット、1 GB 以上 |
-| ビルド環境 | `python3` + `pycryptodome`（ブートファイル用）、`mkimage` (u-boot-tools) または Docker（uimg 用）、`binwalk`（`kernel.img` 展開用）、`gcc-arm-linux-gnueabi` + `libc6-dev-armel-cross` + `libssl-dev`（チューナーバイナリのビルド用）、mirakc 本体のクロスビルド用に `rustup` + arm-linux-gnueabihf ツールチェーン + `cmake` / `ninja`（`make build-mirakc-armv7` 用）、Web UI 用に Node.js 18+ / npm（任意） |
+| ビルド環境 | `python3` + `pycryptodome`（ブートファイル用）、`mkimage` (u-boot-tools) または Docker（uimg 用）、`binwalk`（`kernel.img` 展開用）、`gcc-arm-linux-gnueabi` + `libc6-dev-armel-cross` + `libssl-dev`（チューナーバイナリのビルド用）、mirakc 本体のクロスビルド用に `rustup` + arm-linux-gnueabihf ツールチェーン + `cmake` / `ninja` + `autoconf` / `automake` / `libtool` / `pkg-config` / `patch`（`make build-mirakc-armv7` 用）、Web UI 用に Node.js 18+ / npm |
 | ADB | デバイスへの接続（`adb connect` / `adb devices` で認識済みであること）。全デプロイ系コマンドで必要 |
 | ネットワーク | mirakc 本体・Web UI のソース取得（`git clone`）に必要 |
 | ACAS マスターキー | 64 文字の hex |
@@ -70,7 +70,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 [.devcontainer/Dockerfile](.devcontainer/Dockerfile) からビルド環境が構築されます。主な内容:
 
 - `gcc-arm-linux-gnueabi` + `libc6-dev-armel-cross` + `libssl-dev` — `make build-bins`（ARM32 チューナーバイナリのクロスコンパイル）
-- `gcc-arm-linux-gnueabihf` + `g++-arm-linux-gnueabihf` + `libc6-dev-armhf-cross` + `binutils-arm-linux-gnueabihf` + `cmake` + `ninja-build` — `make build-mirakc-armv7`（mirakc-BS4K 本体の ARMv7 クロスビルド）
+- `gcc-arm-linux-gnueabihf` + `g++-arm-linux-gnueabihf` + `libc6-dev-armhf-cross` + `binutils-arm-linux-gnueabihf` + `cmake` + `ninja-build` + `autoconf` + `automake` + `libtool` + `pkg-config` + `patch` — `make build-mirakc-armv7`（mirakc-BS4K 本体の ARMv7 クロスビルド。mirakc-arib は `vendor/aribb24` を autotools でビルドするため autoconf 系が必要）
 - **Rust** feature — `make build-mirakc-armv7` が使う `cargo` / `rustup`
 - **Node.js** feature — `make build-webui`（mirakc-webui のビルド）
 - `binwalk` + `cpio` — `kernel.img` から initramfs cpio を展開（[Step 0](#step-0-kernelimg-を入手して展開する)）
@@ -316,11 +316,14 @@ ARMv7 (glibc) 版の mirakc 3バイナリはリポジトリに含まれません
 ```sh
 # 前提: rustup/cargo + armv7-unknown-linux-gnueabihf target、
 #       gcc-arm-linux-gnueabihf / g++-arm-linux-gnueabihf / libc6-dev-armhf-cross、
-#       cmake、ninja、git
+#       cmake、ninja、autoconf、automake、libtool、pkg-config、patch、git
 make build-mirakc-armv7       # = bash scripts/build_mirakc_armv7.sh
 ```
 
-スクリプトは [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K)（SIGTERM 対応コミット固定）、[yuchi0531/mirakc-arib-tlv](https://github.com/yuchi0531/mirakc-arib-tlv)（v0.1.0）、[mirakc/mirakc-arib](https://github.com/mirakc/mirakc-arib)（v0.24.37 相当）を `tmp/mirakc-cross-build/` に clone してクロスビルドし、`tmp/mirakc-armv7/` を更新します。ビルドは再利用のため再実行可能です。
+スクリプトは [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K)（既定 `main`＝最新）、[yuchi0531/mirakc-arib-tlv](https://github.com/yuchi0531/mirakc-arib-tlv)（v0.1.0）、[mirakc/mirakc-arib](https://github.com/mirakc/mirakc-arib)（既定 `0.24.40`＝最新リリースタグ）を `tmp/mirakc-cross-build/` に clone してクロスビルドし、`tmp/mirakc-armv7/` を更新します。ビルドは再利用のため再実行可能です。
+
+> 既定では最新をビルドします。再現性のため特定のコミット／タグに固定したい場合は
+> `MIRAKC_REF` / `MIRAKC_TLV_REF` / `MIRAKC_ARIB_REF` を指定してください（例: `MIRAKC_ARIB_REF=0.24.40 make build-mirakc-armv7`）。
 
 ---
 
@@ -716,10 +719,12 @@ adb -s <デバイスのIPアドレス>:5555 shell "grep MemAvailable /proc/memin
 
 `make build-mirakc-armv7` が失敗する場合:
 
-- **ツール不足**: `cargo` / `rustup` / `arm-linux-gnueabihf-gcc` / `cmake` / `ninja` が必要です。冒頭の前提チェックのメッセージに従ってインストールしてください（Dev Container なら導入済み）。
+- **ツール不足**: `cargo` / `rustup` / `arm-linux-gnueabihf-gcc` / `cmake` / `ninja` / `autoconf` / `automake` / `libtool` / `pkg-config` / `patch` が必要です。冒頭の前提チェックのメッセージに従ってインストールしてください（Dev Container なら導入済み）。
+  - `mirakc-arib` は `vendor/aribb24` を `./bootstrap`（autoreconf）→ `./configure` でビルドするため、**autotools が無いと失敗します**。`--no-install-recommends` で構築したコンテナでは特に不足しがちです（`sudo apt install autoconf automake libtool pkg-config patch`）。
 - **rust target 不足**: スクリプトが自動で `rustup target add armv7-unknown-linux-gnueabihf` を実行します。手動なら `rustup target add armv7-unknown-linux-gnueabihf`。
 - **ネットワーク / GitHub に到達できない**: `git clone` に失敗します。プロキシ環境では `https_proxy` 等を設定します。
-- ソースのコミットは `MIRAKC_REF` / `MIRAKC_TLV_REF` / `MIRAKC_ARIB_REF` で固定されています（`scripts/build_mirakc_armv7.sh` 冒頭）。
+- **Rust が古い**: `mirakc-BS4K` の `main` は `rust-version = 1.99.0` を要求します。`rustup update stable` で更新してください（古いと `cargo build` が MSRV エラーで止まります）。
+- ソースの追従先は `MIRAKC_REF` / `MIRAKC_TLV_REF` / `MIRAKC_ARIB_REF` で変更できます（既定は `main` / `v0.1.0` / `0.24.40`）。特定のコミットに固定すれば再現性が上がります。
 
 ### mirakc が起動しない
 
