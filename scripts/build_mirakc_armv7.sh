@@ -37,8 +37,8 @@ MIRAKC_REF="${MIRAKC_REF:-smb400-minimal}" # BS4K/TLV 差分のみの最小ブ�
 MIRAKC_TLV_REPO="${MIRAKC_TLV_REPO:-https://github.com/yuchi0531/mirakc-arib-tlv.git}"
 MIRAKC_TLV_REF="${MIRAKC_TLV_REF:-v0.1.0}"
 MIRAKC_ARIB_REPO="${MIRAKC_ARIB_REPO:-https://github.com/mirakc/mirakc-arib.git}"
-# mirakc-arib の最新リリースタグ (0.24.40, 2026-10-15)
-MIRAKC_ARIB_REF="${MIRAKC_ARIB_REF:-0.24.40}"
+# mirakc-arib の最新リリースタグ (0.24.41, 2026-11-06)
+MIRAKC_ARIB_REF="${MIRAKC_ARIB_REF:-0.24.41}"
 
 fail() {
     echo "[!] $*" >&2
