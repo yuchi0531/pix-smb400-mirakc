@@ -119,6 +119,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   ├── start_mirakc.sh              mirakc 起動スクリプト（chroot + glibc ランタイム）
 │   ├── stop_android_tv.sh           Android TV 不要プロセス停止
 │   ├── crash_guard.sh               クラッシュ監視ウォッチドッグ
+│   ├── remote_reboot.sh             デバイスごとリモート再起動（ホスト側）
 │   ├── write_usb_boot.sh            USBメモリへブートファイル3点を書き込む（要 sudo）
 │   ├── setup_proot.sh               Alpine rootfs + glibc-armhf 初回セットアップ
 │   ├── build_mirakc_armv7.sh        mirakc 3バイナリをソースからクロスビルド
@@ -634,8 +635,45 @@ curl -s http://<デバイスのIPアドレス>:40772/api/services | python3 -m j
 - トランスポンダの初回チューニング時、ウォームアップで稀にサービスを取り逃すことがあります（ストリーム先頭の `7f ff`）。
   その場合は `make start` で再起動すれば取得されます。
 
-> **再起動について**: 再起動はホストから `make restart` を使ってください。
+> **再起動について**: mirakc だけを再起動する場合はホストから `make restart` を使ってください。
 > `make stop` は mirakc に SIGTERM を送り、mirakc は猶予 2 秒でチューナー子プロセス（`smb400-tuner.sh` / `tuner-stream-*` / `b21dec` / `b61dec`）を掃除してから終了します。
+> デバイスごと再起動する場合は [リモート再起動（デバイスごと）](#リモート再起動デバイスごと) を参照してください。
+
+### リモート再起動（デバイスごと）
+
+他端末から SMB400 本体を再起動し、mirakc の復帰まで待つ機能です。
+
+**前提: USB Boot ピンを常時ショート（ジャンパ）しておくこと。**
+この構成では warm reboot でも USB ブートのカスタム initramfs に戻り、`mirakc_proxy` が自動起動します。
+ジャンパが無い場合、再起動後は eMMC の Android TV になり mirakc は起動しません。
+
+```sh
+# ホスト（adb が使える端末）から
+scripts/remote_reboot.sh <デバイスのIPアドレス>:5555
+
+# リポジトリのルートなら
+make remote-reboot ADB_TARGET=<デバイスのIPアドレス>:5555
+# または
+make reboot ADB_TARGET=<デバイスのIPアドレス>:5555
+```
+
+流れ（標準出力に出るメッセージ）:
+
+```
+[host]   reboot request -> 192.168.1.133:5555
+[device] REBOOT_ACCEPTED
+[device] REBOOT_STARTING
+[host]   waiting for device to go offline...
+[host]   waiting for device to come back...
+[host]   device is back — waiting for mirakc...
+[device] REBOOT_COMPLETE boot_id=<...> version={"current":"...","latest":"..."}
+[host]   reboot completed
+```
+
+- 再起動中は ADB 接続が切れるため、完了メッセージは再接続後にホストがデバイスから `boot_id` / `/api/version` を読んで確定します（`boot_id` が変わっていなければ失敗扱い）。
+- このデバイスは `ro.adb.secure=0` のため adb のペアリングは不要です。LAN 内の端末から実行できます。
+- 録画・視聴の有無は判定しません。EDCB などクライアント側のスケジュールに合わせて実行してください。
+- 復帰待ちのタイムアウトは 再接続 240 秒 / mirakc 180 秒です。
 
 ---
 
@@ -662,7 +700,9 @@ make push-all            # チューナーバイナリ・mirakc バイナリ・�
 make push-webui          # Web UI のみ配備
 make start               # mirakc 起動
 make stop                # 停止（チューナー・デスクランブラーも含む）
-make restart             # 再起動
+make restart             # mirakc のみ再起動
+make remote-reboot       # デバイスごとリモート再起動（USB Boot ジャンパ前提）
+make reboot              # remote-reboot の別名
 make log                 # ログ確認（最新 50 行）
 make test                # BS4K 疎通テスト
 make test-cs             # CS CS2 疎通テスト

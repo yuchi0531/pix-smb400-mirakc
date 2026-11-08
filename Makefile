@@ -66,7 +66,7 @@ CFLAGS_ARM   := -march=armv7-a -mfloat-abi=softfp -mfpu=vfpv3 \
 .PHONY: build-bins build-mirakc-armv7 build-webui android-libs \
         check-tuner-bins push-all push-bins push-scripts push-config push-webui \
         deploy-mirakc setup-runtime \
-        start stop restart log test test-cs help
+        start stop restart remote-reboot reboot log test test-cs help
 
 # ---- ビルド (src/ → bin/) ----
 
@@ -269,6 +269,14 @@ stop:
 
 restart: stop start
 
+# デバイスごとリモート再起動し、mirakc の復帰まで待つ。
+# 前提: USB Boot ピンを常時ショート（ジャンパ）しておくこと。
+# 他端末からは: scripts/remote_reboot.sh <device-ip>:5555
+remote-reboot:
+	bash scripts/remote_reboot.sh $(ADB_TARGET)
+
+reboot: remote-reboot
+
 # ---- 確認 ----
 
 log:
@@ -308,7 +316,9 @@ help:
 	@echo "  make setup-runtime       Alpine rootfs + glibc ランタイムを構築 (初回のみ)"
 	@echo "  make start               mirakc 起動"
 	@echo "  make stop                mirakc 停止"
-	@echo "  make restart             再起動"
+	@echo "  make restart             再起動 (mirakc のみ)"
+	@echo "  make remote-reboot       デバイスごと再起動 (USB Boot ジャンパ前提)"
+	@echo "  make reboot              remote-reboot の別名"
 	@echo "  make log                 ログ確認 (tail -50)"
 	@echo "  make test                BS4K ストリーム疎通テスト"
 	@echo "  make test-cs             CS ND02 ストリーム疎通テスト (実機・契約依存)"
