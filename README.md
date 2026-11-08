@@ -398,6 +398,10 @@ chmod 600 /data/local/tmp/.acas_key
 wc -c /data/local/tmp/.acas_key
 ```
 
+> リモートデコーダを使う場合は、同じキーを `bin/x86/.acas_key` に置いてください
+> （`decoder.sh` / `b61dec-remote` がバイナリの隣から自動で読みます）。
+> `.acas_key` は秘密情報なのでコミットしないでください。
+
 ---
 
 ## Part 3: 起動・確認
@@ -631,14 +635,21 @@ make start                 # start_mirakc.sh が acas_proxy も起動
 # x86_64 (Linux) でリモート用バイナリをビルド
 make build-decoders-remote    # bin/x86/b61dec-remote, bin/x86/b25dec-remote (x86_64)
 
-# 復号（BS4K/BS8K）
+# ACAS キーをバイナリの隣に置く（BS4K 用）
+cp .acas_key bin/x86/.acas_key
+
+# 復号（BS4K/BS8K）— -key は不要
 cat scrambled.tlv | decoder.sh 45168 --acas 192.168.1.133:40773 > plain.tlv
 # 復号（GR/BS/CS 2K）
 cat scrambled.ts  | decoder.sh BS15_0 --acas 192.168.1.133:40773 > plain.ts
 ```
 
 - `decoder.sh` はチャンネル形式で `b61dec` / `b25dec` を自動選択します。
-- BS4K は ACAS マスターキーが必要です（`ACAS_KEY` 環境変数、または `ACAS_KEY_FILE`）。
+- BS4K は ACAS マスターキーが必要です。**バイナリの隣（`bin/x86/.acas_key`）に置けば自動で読みます**。
+  `ACAS_KEY` / `ACAS_KEY_FILE` で上書きも可能です。
+  探索順: `ACAS_KEY` → `ACAS_KEY_FILE` → バイナリの隣 → `BINDIR/.acas_key` → `/data/local/tmp/.acas_key`。
+  なお `b61dec-remote` を直接実行する場合も、バイナリの隣の `.acas_key` を読みます（`-key` 省略可）。
+- `.acas_key` は秘密情報です。リポジトリにコミットしないでください（`.acas_key` は gitignore 済み）。
 - 追加オプションは不要です（認証なし）。
 - Windows は MinGW-w64 + OpenSSL で `b61dec.c` / `b25dec.c` / `acas_remote.c` をビルドできます。
 

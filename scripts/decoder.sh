@@ -15,7 +15,8 @@
 #   BINDIR          directory containing the decoder binaries
 #                   (default: the directory of this script)
 #   ACAS_KEY        32-byte ACAS master key (64 hex chars) for b61dec
-#   ACAS_KEY_FILE   file containing the key (default /data/local/tmp/.acas_key)
+#   ACAS_KEY_FILE   explicit key file (optional; otherwise .acas_key next to
+#                   the b61dec binary is used, then /data/local/tmp/.acas_key)
 #   ACAS_PROXY      default --acas value, e.g. 192.168.1.133:40773
 #
 # The proxy runs on the SMB400 (acas_proxy, default port 40773).
@@ -73,18 +74,23 @@ pick_bin() {
 case "$CHANNEL" in
     4[0-9][0-9][0-9][0-9])
         # BS4K / BS8K (ISDB-S3): ACAS B61
-        if [ -z "${ACAS_KEY:-}" ]; then
-            KEYFILE="${ACAS_KEY_FILE:-/data/local/tmp/.acas_key}"
-            if [ -s "$KEYFILE" ]; then
-                ACAS_KEY=$(tr -d '[:space:]' < "$KEYFILE")
-            fi
-        fi
-        if [ -z "${ACAS_KEY:-}" ]; then
-            echo "decoder.sh: ACAS key required for BS4K (set ACAS_KEY or ACAS_KEY_FILE)" >&2
-            exit 1
-        fi
         BIN=$(pick_bin b61dec)
-        set -- -key "$ACAS_KEY"
+        if [ -z "${ACAS_KEY:-}" ] && [ -n "${ACAS_KEY_FILE:-}" ] && [ -s "${ACAS_KEY_FILE}" ]; then
+            ACAS_KEY=$(tr -d '[:space:]' < "${ACAS_KEY_FILE}")
+        fi
+        if [ -z "${ACAS_KEY:-}" ]; then
+            BIN_DIR=$(dirname "$BIN")
+            for f in "$BIN_DIR/.acas_key" "$BINDIR/.acas_key" "/data/local/tmp/.acas_key"; do
+                if [ -s "$f" ]; then
+                    ACAS_KEY=$(tr -d '[:space:]' < "$f")
+                    break
+                fi
+            done
+        fi
+        set --
+        if [ -n "${ACAS_KEY:-}" ]; then
+            set -- -key "$ACAS_KEY"
+        fi
         [ -n "$ACAS" ]  && set -- "$@" -acas "$ACAS"
         [ -n "$VERBOSE" ] && set -- "$@" -v
         [ -x "$BIN" ] || { echo "decoder.sh: $BIN not found" >&2; exit 1; }

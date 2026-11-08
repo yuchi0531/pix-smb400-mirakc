@@ -45,6 +45,7 @@
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <ctype.h>
 #include "acas_remote.h"
 /* time.h intentionally not included — Android bionic symbol versioning
  * is incompatible with glibc headers when cross-compiling from Ubuntu.
@@ -536,6 +537,7 @@ static void usage(const char *prog) {
     fprintf(stderr,
         "Usage: %s -key <64-hex-chars> [-acas host:port] [-noauth] [-v]\n\n"
         "  -key <hex>      32-byte ACAS master key (64 hex chars)\n"
+        "                  (omit if .acas_key is next to this binary)\n"
         "  -acas <h:p>     use a remote ACAS APDU proxy instead of local SCI\n"
         "  -noauth         Skip A0 hash verification (debug)\n"
         "  -v              Verbose: print per-packet scramble detection info\n\n"
@@ -545,11 +547,13 @@ static void usage(const char *prog) {
         "  tuner-stream-bs-ng 0 2 1164560 0 | \\\n"
         "  %s -key <64-hex-acas-master-key>\n\n"
         "Remote ACAS (decoder on another host):\n"
-        "  tuner-stream-bs-ng ... | \\\n"
-        "  %s -key <64-hex-acas-master-key> -acas 192.168.1.133:40773\n\n"
+        "  cp .acas_key bin/x86/.acas_key\n"
+        "  tuner-stream-bs-ng ... | bin/x86/b61dec-remote -acas 192.168.1.133:40773\n"
+        "  # or explicitly: %s -key <64-hex-acas-master-key> -acas host:40773\n\n"
         "ACAS Master Key:\n"
         "  Extract it from /vendor/lib/libstationtv_lt_px_stream.so on the\n"
         "  device, or read /data/local/tmp/.acas_key (deployed separately).\n"
+        "  The remote decoder also reads .acas_key next to its own binary.\n"
         "  Never commit the key to this repository.\n",
         prog, prog, prog);
     exit(1);
@@ -562,6 +566,61 @@ static int hex2byte(char c) {
     return -1;
 }
 
+static int parse_hex_key(const char *hex, uint8_t key[32]) {
+    int j;
+    if (!hex || strlen(hex) != 64) return -1;
+    for (j = 0; j < 32; j++) {
+        int h = hex2byte(hex[j*2]);
+        int l = hex2byte(hex[j*2+1]);
+        if (h < 0 || l < 0) return -1;
+        key[j] = (uint8_t)((h << 4) | l);
+    }
+    return 0;
+}
+
+/* Read a 64-hex-char .acas_key placed next to the executable.
+ * This lets the remote decoder work without -key:
+ *   cp .acas_key bin/x86/.acas_key
+ *   cat stream | bin/x86/b61dec-remote -acas <smb400>:40773
+ * Falls back to /proc/self/exe when argv[0] has no directory component. */
+static int load_key_beside_exe(const char *argv0, uint8_t key[32]) {
+    char path[4096];
+    const char *src = (argv0 && strchr(argv0, '/')) ? argv0 : NULL;
+
+    if (src) {
+        snprintf(path, sizeof(path), "%s", src);
+    } else {
+        ssize_t n = readlink("/proc/self/exe", path, sizeof(path) - 1);
+        if (n <= 0) return -1;
+        path[n] = '\0';
+    }
+
+    char *slash = strrchr(path, '/');
+    if (!slash) return -1;
+    size_t dirlen = (size_t)(slash - path) + 1;
+    snprintf(slash + 1, sizeof(path) - dirlen, ".acas_key");
+
+    FILE *f = fopen(path, "r");
+    if (!f) return -1;
+    char buf[128];
+    size_t len = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    if (len == 0) return -1;
+    buf[len] = '\0';
+
+    char *p = buf;
+    while (*p && isspace((unsigned char)*p)) p++;
+    char hex[65];
+    int i;
+    for (i = 0; i < 64; i++) {
+        if (!isxdigit((unsigned char)p[i])) break;
+        hex[i] = p[i];
+    }
+    if (i != 64) return -1;
+    hex[64] = '\0';
+    return parse_hex_key(hex, key);
+}
+
 int main(int argc, char **argv) {
     uint8_t master_key[32];
     int have_key = 0;
@@ -571,16 +630,9 @@ int main(int argc, char **argv) {
     for (i=1; i<argc; i++) {
         if (strcmp(argv[i], "-key")==0 && i+1<argc) {
             const char *hex = argv[++i];
-            if ((int)strlen(hex) != 64) {
+            if (parse_hex_key(hex, master_key) < 0) {
                 fprintf(stderr, "b61dec: -key must be 64 hex chars\n");
                 return 1;
-            }
-            int j;
-            for (j=0; j<32; j++) {
-                int h = hex2byte(hex[j*2]);
-                int l = hex2byte(hex[j*2+1]);
-                if (h<0||l<0) { fprintf(stderr,"b61dec: invalid hex in -key\n"); return 1; }
-                master_key[j] = (uint8_t)((h<<4)|l);
             }
             have_key = 1;
         } else if (strcmp(argv[i], "-acas")==0 && i+1<argc) {
@@ -596,7 +648,13 @@ int main(int argc, char **argv) {
     }
 
     if (!have_key) {
-        fprintf(stderr, "b61dec: -key is required\n");
+        if (load_key_beside_exe(argv[0], master_key) == 0) {
+            have_key = 1;
+            fprintf(stderr, "b61dec: using .acas_key next to the binary\n");
+        }
+    }
+    if (!have_key) {
+        fprintf(stderr, "b61dec: -key is required (or place .acas_key next to the binary)\n");
         usage(argv[0]);
     }
 
