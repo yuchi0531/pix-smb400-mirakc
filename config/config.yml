@@ -326,7 +326,7 @@ tuners:
   # channel 値(GR=物理ch, BS=BSxx_y, CS=CSn/NDxx, BS4K=5桁StreamID)は
   # smb400-tuner.sh が解釈する。
   # チューナーコマンドは「生（スクランブル済み）」の MPEG-TS / TLV を出力する。
-  # 復号はデコーダ側（b25dec / b61dec、ローカルまたはリモートの decoder.sh）が
+  # 復号はデコーダ側（b25dec / b61dec、ローカルまたはリモート）が
   # ACAS チップ（必要なら acas_proxy 経由）を使って行う。
   # BS4K は mirakc 側で passthrough される（tlvDecoder / decode-filter は不要）。
   - name: SMB400

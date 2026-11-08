@@ -11,8 +11,8 @@
 #   BS4K: integer ≥40000   → tuner-stream-bs-ng (raw TLV, ISDB-S3)
 #
 # Decoding is NOT done here.  This script only tunes and emits the raw
-# (scrambled) MPEG-TS / TLV.  The decoder (b25dec / b61dec, locally or on a
-# remote host via decoder.sh) and the ACAS proxy handle ECM/Ks/AES.
+# (scrambled) MPEG-TS / TLV.  The decoders (b25dec / b61dec, locally or on a
+# remote host) and the ACAS proxy handle ECM/Ks/AES.
 #   - GR / BS / CS(2K): MULTI2 (ARIB STD-B25)  → b25dec
 #   - BS4K / BS8K:      ACAS-RMP (ARIB STD-B61) → b61dec
 #
@@ -116,8 +116,8 @@ case "$CHANNEL" in
             45280)             IF_KHZ=2472000 ;;  # BS8K (NHK BS8K, 左旋 11.97682GHz / IF 2472MHz, serviceId 102)
             *) echo "smb400-tuner.sh: unknown BS4K channel '$CHANNEL'" >&2; exit 1 ;;
         esac
-        # Raw (scrambled) TLV passthrough.  b61dec (local or remote via
-        # decoder.sh + ACAS proxy) performs ECM/AES-128-CTR descrambling.
+        # Raw (scrambled) TLV passthrough.  b61dec (local or remote via the
+        # ACAS proxy) performs ECM/AES-128-CTR descrambling.
         chroot /proc/1/root /system/bin/sh -c \
             "$BINDIR/tuner-stream-bs-ng 0 2 $IF_KHZ $CHANNEL" &
         CHROOT_PID=$!

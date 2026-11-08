@@ -119,7 +119,6 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   ├── start_mirakc.sh              mirakc 起動スクリプト（chroot + glibc ランタイム）
 │   ├── stop_android_tv.sh           Android TV 不要プロセス停止
 │   ├── crash_guard.sh               クラッシュ監視ウォッチドッグ
-│   ├── decoder.sh                   生TS/TLV を b25dec/b61dec で復号（ローカル/リモート）
 │   ├── smb400_reboot.sh             デバイスごとリモート再起動（ホスト側）
 │   ├── write_usb_boot.sh            USBメモリへブートファイル3点を書き込む（要 sudo）
 │   ├── setup_proot.sh               Alpine rootfs + glibc-armhf 初回セットアップ
@@ -399,7 +398,7 @@ wc -c /data/local/tmp/.acas_key
 ```
 
 > リモートデコーダを使う場合は、同じキーを `bin/x86/.acas_key` に置いてください
-> （`decoder.sh` / `b61dec-remote` がバイナリの隣から自動で読みます）。
+> （`b61dec-remote` がバイナリの隣から自動で読みます）。
 > `.acas_key` は秘密情報なのでコミットしないでください。
 
 ---
@@ -426,7 +425,7 @@ make start ADB_TARGET=<デバイスのIPアドレス>:5555
 ### Step 10: ストリームを確認する
 
 チューナー出力は**生（スクランブル済み）**です。`make test` は生ストリームの先頭を表示します。
-復号確認は `decoder.sh` / `b61dec` / `b25dec` を通してください（[リモートデコーダ / ACAS proxy](#リモートデコーダ--acas-proxy) 参照）。
+復号確認は `b61dec` / `b25dec`（ローカル、または `bin/x86/` のリモートバイナリ）を通してください（[リモートデコーダ / ACAS proxy](#リモートデコーダ--acas-proxy) 参照）。
 
 **BS4K（生TLV）:**
 
@@ -448,7 +447,7 @@ Streaming BS4K 45168 for 5s (raw TLV)...
 
 ```sh
 curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/channels/BS4K/45168/stream" \
-  | decoder.sh 45168 --acas <SMB400のIP>:40773 | od -v -t x1 | head -4
+  | bin/x86/b61dec-remote --acas <SMB400のIP>:40773 | od -v -t x1 | head -4
 # 7f 02 / 7f 03 が現れれば復号成功。失敗時は ACAS 契約/EMM/マスターキーを確認。
 ```
 
@@ -458,7 +457,7 @@ curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/channels/
 make test-cs ADB_TARGET=<デバイスのIPアドレス>:5555
 ```
 
-- 先頭が `47`（TS 同期バイト）なら生TSを受信できています。復号は `decoder.sh CS2` / `b25dec`。
+- 先頭が `47`（TS 同期バイト）なら生TSを受信できています。復号は `bin/x86/b25dec-remote` / `b25dec`。
 
 ---
 
@@ -501,7 +500,7 @@ BS8K（左旋・ISDB-S3）にも対応しています。`config/config.yml` に�
 - BS8K は右旋ではなく**左旋**で送出されるため、`smb400-tuner.sh` が channel `45280`（実 tlvStreamId）を IF `2472MHz` にマップして受信します。
   `type` は BS4K と同じ ISDB-S3 経路のため `BS4K` のままです。
 - 復号経路は BS4K と共通です。チューナーは生（スクランブル済み）TLV を出力し、
-  `b61dec`（ローカル、またはリモートの `decoder.sh` + ACAS proxy）が復号します。
+  `b61dec`（ローカル、またはリモートの `b61dec-remote` + ACAS proxy）が復号します。
 - ストリーム確認（生TLV）:
 
 ```sh
@@ -514,7 +513,7 @@ curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/channels/
 
 ```sh
 curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/channels/BS4K/45280/stream" \
-  | decoder.sh 45280 --acas <SMB400のIP>:40773 | od -v -t x1 | head -4
+  | bin/x86/b61dec-remote --acas <SMB400のIP>:40773 | od -v -t x1 | head -4
 # 先頭が 7f 02 / 7f 03 なら復号済み TLV。サービス名は「ＮＨＫ　ＢＳ８Ｋ」(serviceId 102)
 ```
 
@@ -531,7 +530,7 @@ ffplay http://<デバイスのIPアドレス>:40772/api/channels/BS4K/45280/stre
 地上波デジタル（ISDB-T）にも対応しています。
 地デジも BS と同じ **MULTI2**（B-CAS 方式, CA_system_id 0x0005）でスクランブルされています。
 チューナー（`tuner-stream-ng`、DMX 直接キャプチャ）は**生の MPEG-TS** を出力し、
-`b25dec`（ローカル、またはリモートの `decoder.sh` + ACAS proxy）が ACAS チップ経由で解除します（B-CAS カード不要）。
+`b25dec`（ローカル、またはリモートの `b25dec-remote` + ACAS proxy）が ACAS チップ経由で解除します（B-CAS カード不要）。
 mirakc の `service-filter` / `program-filter`（mirakc-arib）は復号後の TS を想定しているため、
 クライアント側で復号する場合はフィルタの適用順に注意してください。
 
@@ -566,7 +565,7 @@ ffprobe gr27.ts        # mpeg2video が見えれば復号成功
 
 NHK BS などの**BS（ISDB-S, MPEG-TS）**にも対応しています。
 2K BS は ARIB STD-B25 系の **MULTI2**（B-CAS 方式, CA_system_id 0x0005）でスクランブルされています。
-チューナーは**生の MPEG-TS**を出力し、`b25dec`（ローカル、またはリモートの `decoder.sh` + ACAS proxy）が
+チューナーは**生の MPEG-TS**を出力し、`b25dec`（ローカル、またはリモートの `b25dec-remote` + ACAS proxy）が
 オンデバイスの **ACAS チップ**経由で解除します（B-CAS カード不要）。
 BS4K の `b61dec`（ACAS-RMP / AES）とは別系統で、ACAS チップの**従来 CAS 機能**（APDU を ACAS モード P2=0x02 で送出）を使い、ECM から MULTI2 スクランブル鍵を取得します。
 
@@ -581,12 +580,12 @@ BS4K の `b61dec`（ACAS-RMP / AES）とは別系統で、ACAS チップの**従
 - channel は `BSxx_y`（xx=トランスポンダ番号, y=ストリーム）形式で、`smb400-tuner.sh` が IF = `1049480 + (xx-1)/2 × 38360` kHz を算出して `tuner-stream-bs-ng`（mode=1）でロックします（旧 `tuner-stream-bs` バイナリは現在未使用・フォールバック保持）。
 - `b25dec` は **ACAS マスターキー不要**です（放送局のワークキー Kw は、過去の実放送受信時に EMM 経由でチップへ書き込まれた契約情報を利用するため）。
   逆に、当該局の契約・受信履歴が無いチップでは ECM 応答が「視聴不可」となり復号できません。
-- 出力は**生の MPEG-TS**です。復号は `b25dec` / `decoder.sh` で行います（mirakc の `service-filter` / `program-filter` は復号後を想定）。
+- 出力は**生の MPEG-TS**です。復号は `b25dec`（ローカル） / `b25dec-remote`（リモート）で行います（mirakc の `service-filter` / `program-filter` は復号後を想定）。
 - ストリーム確認・視聴（復号する場合）:
 
 ```sh
 curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/stream" \
-  | decoder.sh BS15_0 --acas <SMB400のIP>:40773 > nhkbs.ts
+  | bin/x86/b25dec-remote --acas <SMB400のIP>:40773 > nhkbs.ts
 ffprobe nhkbs.ts          # mpeg2video 1440x1080 + aac が見えれば復号成功
 ffplay "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/stream"  # 生TSのため要デコーダ
 ```
@@ -606,7 +605,7 @@ SMB400 のチューナーコマンドは**生（スクランブル済み）**の
 復号は次のどちらかで行います。
 
 - ローカル: `b25dec` / `b61dec`（SMB400 上）
-- リモート: 同じデコーダを `-acas <SMB400>:40773` で実行（`decoder.sh`）
+- リモート: 同じデコーダを `-acas <SMB400>:40773` で実行
 
 リモート側に TS がある場合、ネットワークを流れるのは ACAS の APDU のみで、TS 本体は流れません。
 
@@ -639,15 +638,14 @@ make build-decoders-remote    # bin/x86/b61dec-remote, bin/x86/b25dec-remote (x8
 cp .acas_key bin/x86/.acas_key
 
 # 復号（BS4K/BS8K）— -key は不要
-cat scrambled.tlv | decoder.sh 45168 --acas 192.168.1.133:40773 > plain.tlv
+cat scrambled.tlv | bin/x86/b61dec-remote --acas 192.168.1.133:40773 > plain.tlv
 # 復号（GR/BS/CS 2K）
-cat scrambled.ts  | decoder.sh BS15_0 --acas 192.168.1.133:40773 > plain.ts
+cat scrambled.ts  | bin/x86/b25dec-remote --acas 192.168.1.133:40773 > plain.ts
 ```
 
-- `decoder.sh` はチャンネル形式で `b61dec` / `b25dec` を自動選択します。
-- BS4K は ACAS マスターキーが必要です。**バイナリの隣（`bin/x86/.acas_key`）に置けば自動で読みます**。
-  `ACAS_KEY` / `ACAS_KEY_FILE` で上書きも可能です。
-  探索順: `ACAS_KEY` → `ACAS_KEY_FILE` → バイナリの隣 → `BINDIR/.acas_key` → `/data/local/tmp/.acas_key`。
+- チャンネルに応じて `b61dec-remote`（BS4K/BS8K） / `b25dec-remote`（GR/BS/CS）を使い分けます。
+- BS4K は ACAS マスターキーが必要です。**バイナリの隣（`bin/x86/.acas_key`）に置けば `b61dec-remote` が自動で読みます**。
+  明示する場合は `-key <64hex>` を指定してください。
   なお `b61dec-remote` を直接実行する場合も、バイナリの隣の `.acas_key` を読みます（`-key` 省略可）。
 - `.acas_key` は秘密情報です。リポジトリにコミットしないでください（`.acas_key` は gitignore 済み）。
 - 追加オプションは不要です（認証なし）。
@@ -776,7 +774,7 @@ make reboot ADB_TARGET=<デバイスのIPアドレス>:5555
 - GR / BS / CS(2K) は `mirakc-arib` のフィルタ（`filter-service` / `filter-program`）で処理します。BS4K / BS8K 用のジョブ（`scan-services-tlv` / `collect-mh-eits`）は `mirakc-arib-tlv` が担当します。
 - チューナーは実質 1 台です。視聴と EPG ジョブ（`update-schedules` 等）はチューナーを奪い合うため、時間帯によってはストリーム開始が待たされたり、EPG 取得が失敗することがあります。
 - EPG ジョブは `config.yml` の既定スケジュール（08:01 / 20:01 等）で動きます。録画予約の更新タイミングに注意してください。
-- ACAS 契約が必要なチャンネルは、契約・EMM 状態がチップに無いと復号できません（`decoder.sh` で復号できない場合は Step 8 と契約を確認）。
+- ACAS 契約が必要なチャンネルは、契約・EMM 状態がチップに無いと復号できません（`b61dec` / `b25dec` で復号できない場合は Step 8 と契約を確認）。
 - mirakc は停止時に SIGTERM → 猶予 2 秒 → SIGKILL の順でチューナー子プロセスを終了させます（`smb400-tuner.sh` の trap がチューナーを解放します）。`make stop` はこの猶予を待ってから後続処理を行います。
 
 ---
@@ -910,7 +908,7 @@ adb -s <デバイスのIPアドレス>:5555 shell \
 ### BS4K が無映像・無出力
 
 - `make test` は生（スクランブル済み）TLV を表示します。復号して確認するには
-  `decoder.sh 45168 --acas <SMB400のIP>:40773` を通してください。
+  `bin/x86/b61dec-remote --acas <SMB400のIP>:40773` を通してください。
   復号できない場合は ACAS マスターキー（Step 8）と契約を確認。
 - OEM チューナーサービスが ACAS を占有している → 上記「OEM サービスと ACAS 競合」を参照。
 - 出力なし → チューナーが応答していない。`make log` を確認し、`make restart` を試す。
@@ -932,7 +930,7 @@ adb -s <デバイスのIPアドレス>:5555 shell "rm -f /data/local/tmp/.tuner_
 
 ### TVTest 等の外部クライアントで視聴できない（信号が流れてこない）
 
-`decoder.sh` / `b61dec` / `b25dec` で復号したストリームが正常なのに、TVTest 側で映像が出ない場合はクライアント側の BonDriver 設定を確認してください。
+`b61dec` / `b25dec` で復号したストリームが正常なのに、TVTest 側で映像が出ない場合はクライアント側の BonDriver 設定を確認してください。
 
 - **mirakc 用の BonDriver を使う**: [stuayu/BonDriver_mirakc](https://github.com/stuayu/BonDriver_mirakc) を使い、mirakc の API（`http://<デバイスのIPアドレス>:40772`）へ接続します。Mirakurun 用 BonDriver は mirakc では動作しないことがあります。
 - **BS4K / BS8K は専用 BonDriver が必要**: mirakc は BS4K / BS8K を TLV のまま passthrough するため、dantto4k 等の ISDB-S3 対応 BonDriver を経由してください（例: `BonDriver_mirakc` → `BonDriver_dantto4k` の構成でリアルタイム視聴可）。
@@ -943,7 +941,7 @@ adb -s <デバイスのIPアドレス>:5555 shell "rm -f /data/local/tmp/.tuner_
   make test ADB_TARGET=<デバイスのIPアドレス>:5555
   # 復号して問題ないか（ACAS proxy 経由）
   curl -s --max-time 8 http://<デバイスのIPアドレス>:40772/api/channels/GR/27/stream \
-    | decoder.sh 27 --acas <SMB400のIP>:40773 | od -v -t x1 | head -4
+    | bin/x86/b25dec-remote --acas <SMB400のIP>:40773 | od -v -t x1 | head -4
   ```
 
 ### その他（USB ブート・ADB）
