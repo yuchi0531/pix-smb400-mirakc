@@ -335,10 +335,11 @@ tuners:
     time-limit: 30000
 
 filters:
+  # 生ストリームを復号するデコーダ（チャンネル種別で b61dec / b25dec を選択）。
+  # ACAS は同じ SMB400 上の acas_proxy を --host 127.0.0.1:40773 で使う。
   tuner-filter:
-    command: 'sh -c ''case {{{channel_type}}} in BS4K) exec /data/local/tmp/b61dec -key "$(cat /data/local/tmp/.acas_key)" -acas 127.0.0.1:40773 ;; *) exec /data/local/tmp/b25dec -acas 127.0.0.1:40773 ;; esac'''
-  # チューナーは生ストリームを出力し、復号はデコーダ側で行うため
-  # decode-filter は空のまま（tuner-filter もデフォルトの空のまま）。
+    command: 'sh -c ''case {{{channel_type}}} in BS4K) exec /data/local/tmp/b61dec -key "$(cat /data/local/tmp/.acas_key)" --host 127.0.0.1:40773 ;; *) exec /data/local/tmp/b25dec --host 127.0.0.1:40773 ;; esac'''
+  # tuner-filter で復号済みのため decode-filter は空のまま。
   service-filter:
     command: '/data/local/tmp/mirakc/bin/mirakc-arib filter-service --sid={{{sid}}}'
   program-filter:

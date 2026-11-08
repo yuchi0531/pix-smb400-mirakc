@@ -174,6 +174,7 @@ static void m2_decrypt(M2 *m, int type, uint8_t *buf, int size) {
 static void *g_lib;
 static int  g_remote;
 static char g_remote_spec[128];
+static int  g_remote_port;
 typedef int (*fn0)(void);
 typedef int (*set_fn)(uint8_t *, int, uint8_t *, int *);
 typedef int (*get_fn)(uint8_t *, int *);
@@ -480,13 +481,33 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-v")) {
             verbose = 1;
-        } else if (!strcmp(argv[i], "-acas") && i + 1 < argc) {
+        } else if (!strcmp(argv[i], "--host") && i + 1 < argc) {
+            snprintf(g_remote_spec, sizeof(g_remote_spec), "%s", argv[++i]);
+            g_remote = 1;
+        } else if (!strcmp(argv[i], "--port") && i + 1 < argc) {
+            g_remote_port = atoi(argv[++i]);
+        } else if ((!strcmp(argv[i], "-acas") || !strcmp(argv[i], "--acas")) &&
+                   i + 1 < argc) {
+            /* Legacy alias for --host */
             snprintf(g_remote_spec, sizeof(g_remote_spec), "%s", argv[++i]);
             g_remote = 1;
         } else {
-            fprintf(stderr, "Usage: %s [-acas host:port] [-v]\n", argv[0]);
+            fprintf(stderr, "Usage: %s [--host host[:port]] [--port n] [-v]\n",
+                    argv[0]);
             return 1;
         }
+    }
+
+    if (g_remote && g_remote_port > 0) {
+        if (g_remote_port > 65535) {
+            fprintf(stderr, "b25dec: invalid --port\n");
+            return 1;
+        }
+        char host[128];
+        snprintf(host, sizeof(host), "%s", g_remote_spec);
+        char *colon = strrchr(host, ':');
+        if (colon) *colon = '\0';
+        snprintf(g_remote_spec, sizeof(g_remote_spec), "%s:%d", host, g_remote_port);
     }
 
     signal(SIGTERM, on_sig); signal(SIGINT, on_sig); signal(SIGPIPE, on_sig);

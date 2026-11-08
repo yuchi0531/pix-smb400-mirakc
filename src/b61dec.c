@@ -174,6 +174,7 @@ static sw_get_fn sw_GetAtr;
 
 static int  g_remote;
 static char g_remote_spec[128];
+static int  g_remote_port;
 
 static int sci_load(void) {
     if (g_remote) return 0; /* remote ACAS proxy: no local SCI access */
@@ -548,10 +549,12 @@ static void print_stats(void) {
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "Usage: %s -key <64-hex-chars> [-acas host:port] [-noauth] [-v]\n\n"
+        "Usage: %s -key <64-hex-chars> [--host <host[:port]>] [--port <n>]\n"
+        "          [-noauth] [-v]\n\n"
         "  -key <hex>      32-byte ACAS master key (64 hex chars)\n"
         "                  (omit if .acas_key is next to this binary)\n"
-        "  -acas <h:p>     use a remote ACAS APDU proxy instead of local SCI\n"
+        "  --host <h[:p]>  remote ACAS APDU proxy (default port 40773)\n"
+        "  --port <n>      proxy port (overrides a port in --host)\n"
         "  -noauth         Skip A0 hash verification (debug)\n"
         "  -v              Verbose: print per-packet scramble detection info\n\n"
         "Reads TLV/MMTP from stdin, writes descrambled TLV to stdout.\n\n"
@@ -561,8 +564,8 @@ static void usage(const char *prog) {
         "  %s -key <64-hex-acas-master-key>\n\n"
         "Remote ACAS (decoder on another host):\n"
         "  cp .acas_key bin/x86/.acas_key\n"
-        "  tuner-stream-bs-ng ... | bin/x86/b61dec-remote -acas 192.168.1.133:40773\n"
-        "  # or explicitly: %s -key <64-hex-acas-master-key> -acas host:40773\n\n"
+        "  tuner-stream-bs-ng ... | bin/x86/b61dec-remote --host 192.168.1.133\n"
+        "  # or explicitly: %s -key <64-hex-acas-master-key> --host 192.168.1.133\n\n"
         "ACAS Master Key:\n"
         "  Extract it from /vendor/lib/libstationtv_lt_px_stream.so on the\n"
         "  device, or read /data/local/tmp/.acas_key (deployed separately).\n"
@@ -594,7 +597,7 @@ static int parse_hex_key(const char *hex, uint8_t key[32]) {
 /* Read a 64-hex-char .acas_key placed next to the executable.
  * This lets the remote decoder work without -key:
  *   cp .acas_key bin/x86/.acas_key
- *   cat stream | bin/x86/b61dec-remote -acas <smb400>:40773
+ *   cat stream | bin/x86/b61dec-remote --host <smb400> [--port 40773]
  * Falls back to /proc/self/exe when argv[0] has no directory component. */
 static int load_key_beside_exe(const char *argv0, uint8_t key[32]) {
     char path[4096];
@@ -648,7 +651,14 @@ int main(int argc, char **argv) {
                 return 1;
             }
             have_key = 1;
-        } else if (strcmp(argv[i], "-acas")==0 && i+1<argc) {
+        } else if (strcmp(argv[i], "--host")==0 && i+1<argc) {
+            snprintf(g_remote_spec, sizeof(g_remote_spec), "%s", argv[++i]);
+            g_remote = 1;
+        } else if (strcmp(argv[i], "--port")==0 && i+1<argc) {
+            g_remote_port = atoi(argv[++i]);
+        } else if ((strcmp(argv[i], "-acas")==0 ||
+                    strcmp(argv[i], "--acas")==0) && i+1<argc) {
+            /* Legacy alias for --host */
             snprintf(g_remote_spec, sizeof(g_remote_spec), "%s", argv[++i]);
             g_remote = 1;
         } else if (strcmp(argv[i], "-noauth")==0) {
@@ -658,6 +668,18 @@ int main(int argc, char **argv) {
         } else {
             usage(argv[0]);
         }
+    }
+
+    if (g_remote && g_remote_port > 0) {
+        if (g_remote_port > 65535) {
+            fprintf(stderr, "b61dec: invalid --port\n");
+            return 1;
+        }
+        char host[128];
+        snprintf(host, sizeof(host), "%s", g_remote_spec);
+        char *colon = strrchr(host, ':');
+        if (colon) *colon = '\0';
+        snprintf(g_remote_spec, sizeof(g_remote_spec), "%s:%d", host, g_remote_port);
     }
 
     if (!have_key) {

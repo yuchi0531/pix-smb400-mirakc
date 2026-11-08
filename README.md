@@ -447,7 +447,7 @@ Streaming BS4K 45168 for 5s (raw TLV)...
 
 ```sh
 curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/channels/BS4K/45168/stream" \
-  | bin/x86/b61dec-remote --acas <SMB400のIP>:40773 | od -v -t x1 | head -4
+  | bin/x86/b61dec-remote --host <SMB400のIP> | od -v -t x1 | head -4
 # 7f 02 / 7f 03 が現れれば復号成功。失敗時は ACAS 契約/EMM/マスターキーを確認。
 ```
 
@@ -513,7 +513,7 @@ curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/channels/
 
 ```sh
 curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/channels/BS4K/45280/stream" \
-  | bin/x86/b61dec-remote --acas <SMB400のIP>:40773 | od -v -t x1 | head -4
+  | bin/x86/b61dec-remote --host <SMB400のIP> | od -v -t x1 | head -4
 # 先頭が 7f 02 / 7f 03 なら復号済み TLV。サービス名は「ＮＨＫ　ＢＳ８Ｋ」(serviceId 102)
 ```
 
@@ -585,7 +585,7 @@ BS4K の `b61dec`（ACAS-RMP / AES）とは別系統で、ACAS チップの**従
 
 ```sh
 curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/stream" \
-  | bin/x86/b25dec-remote --acas <SMB400のIP>:40773 > nhkbs.ts
+  | bin/x86/b25dec-remote --host <SMB400のIP> > nhkbs.ts
 ffprobe nhkbs.ts          # mpeg2video 1440x1080 + aac が見えれば復号成功
 ffplay "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/stream"  # 生TSのため要デコーダ
 ```
@@ -605,7 +605,7 @@ SMB400 のチューナーコマンドは**生（スクランブル済み）**の
 復号は次のどちらかで行います。
 
 - ローカル: `b25dec` / `b61dec`（SMB400 上）
-- リモート: 同じデコーダを `-acas <SMB400>:40773` で実行
+- リモート: 同じデコーダを `--host <SMB400>` で実行
 
 リモート側に TS がある場合、ネットワークを流れるのは ACAS の APDU のみで、TS 本体は流れません。
 
@@ -638,11 +638,12 @@ make build-decoders-remote    # bin/x86/b61dec-remote, bin/x86/b25dec-remote (x8
 cp .acas_key bin/x86/.acas_key
 
 # 復号（BS4K/BS8K）— -key は不要
-cat scrambled.tlv | bin/x86/b61dec-remote --acas 192.168.1.133:40773 > plain.tlv
+cat scrambled.tlv | bin/x86/b61dec-remote --host 192.168.1.133 > plain.tlv
 # 復号（GR/BS/CS 2K）
-cat scrambled.ts  | bin/x86/b25dec-remote --acas 192.168.1.133:40773 > plain.ts
+cat scrambled.ts  | bin/x86/b25dec-remote --host 192.168.1.133 > plain.ts
 ```
 
+- 接続先は `--host <host[:port]>` で指定します（port 省略時は 40773）。`--port <n>` で上書きできます。
 - チャンネルに応じて `b61dec-remote`（BS4K/BS8K） / `b25dec-remote`（GR/BS/CS）を使い分けます。
 - BS4K は ACAS マスターキーが必要です。**バイナリの隣（`bin/x86/.acas_key`）に置けば `b61dec-remote` が自動で読みます**。
   明示する場合は `-key <64hex>` を指定してください。
@@ -908,7 +909,7 @@ adb -s <デバイスのIPアドレス>:5555 shell \
 ### BS4K が無映像・無出力
 
 - `make test` は生（スクランブル済み）TLV を表示します。復号して確認するには
-  `bin/x86/b61dec-remote --acas <SMB400のIP>:40773` を通してください。
+  `bin/x86/b61dec-remote --host <SMB400のIP>` を通してください。
   復号できない場合は ACAS マスターキー（Step 8）と契約を確認。
 - OEM チューナーサービスが ACAS を占有している → 上記「OEM サービスと ACAS 競合」を参照。
 - 出力なし → チューナーが応答していない。`make log` を確認し、`make restart` を試す。
@@ -941,7 +942,7 @@ adb -s <デバイスのIPアドレス>:5555 shell "rm -f /data/local/tmp/.tuner_
   make test ADB_TARGET=<デバイスのIPアドレス>:5555
   # 復号して問題ないか（ACAS proxy 経由）
   curl -s --max-time 8 http://<デバイスのIPアドレス>:40772/api/channels/GR/27/stream \
-    | bin/x86/b25dec-remote --acas <SMB400のIP>:40773 | od -v -t x1 | head -4
+    | bin/x86/b25dec-remote --host <SMB400のIP> | od -v -t x1 | head -4
   ```
 
 ### その他（USB ブート・ADB）

@@ -132,7 +132,7 @@ build-bins: android-libs
 	@echo "[+] Built bin/tuner-stream-ng, tuner-stream-bs-ng, b61dec, tuner-stream-bs, b25dec, acas_proxy"
 
 # リモートデコーダ用: b61dec / b25dec を x86_64 (Linux) 向けにビルドする。
-# ACAS は SMB400 の acas_proxy を -acas host:port で使う（ローカルACAS不要）。
+# ACAS は SMB400 の acas_proxy を --host host[:port] で使う（ローカルACAS不要）。
 # Windows x86_64 は MinGW-w64 + OpenSSL で同様にビルドできる（README 参照）。
 build-decoders-remote:
 	@mkdir -p bin/x86
@@ -316,7 +316,7 @@ log:
 
 # BS4K 45168 から 5 秒受信して先頭バイトを表示
 # チューナー出力は「生（スクランブル済み）TLV」。
-# 復号するには b61dec（ローカルまたは -acas リモート）を通す。
+# 復号するには b61dec（ローカルまたは --host リモート）を通す。
 test:
 	@echo "Streaming BS4K 45168 for 5s (raw TLV)..."
 	@curl -s --max-time 8 http://$(DEVICE_IP):40772/api/channels/BS4K/45168/stream \
