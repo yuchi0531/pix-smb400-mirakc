@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# remote_reboot.sh — SMB400 をリモートから再起動し、復帰まで待つ。
+# smb400_reboot.sh — SMB400 をリモートから再起動し、復帰まで待つ。
 #
 # 前提:
 #   - USB Boot ピンを常時ショート（ジャンパ）しておくこと。
@@ -10,8 +10,8 @@
 #     実行できる。録画・視聴の有無は判定しない（呼び出し側のタイミング責任）。
 #
 # 使い方:
-#   scripts/remote_reboot.sh [<device-ip>:5555]
-#   ADB_TARGET=<device-ip>:5555 scripts/remote_reboot.sh
+#   scripts/smb400_reboot.sh [<device-ip>:5555]
+#   ADB_TARGET=<device-ip>:5555 scripts/smb400_reboot.sh
 #
 # 流れ:
 #   host  : 再起動要求を送信

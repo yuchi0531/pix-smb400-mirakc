@@ -271,9 +271,9 @@ restart: stop start
 
 # デバイスごとリモート再起動し、mirakc の復帰まで待つ。
 # 前提: USB Boot ピンを常時ショート（ジャンパ）しておくこと。
-# 他端末からは: scripts/remote_reboot.sh <device-ip>:5555
+# 他端末からは: scripts/smb400_reboot.sh <device-ip>:5555
 remote-reboot:
-	bash scripts/remote_reboot.sh $(ADB_TARGET)
+	bash scripts/smb400_reboot.sh $(ADB_TARGET)
 
 reboot: remote-reboot
 

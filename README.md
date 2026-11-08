@@ -119,7 +119,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   ├── start_mirakc.sh              mirakc 起動スクリプト（chroot + glibc ランタイム）
 │   ├── stop_android_tv.sh           Android TV 不要プロセス停止
 │   ├── crash_guard.sh               クラッシュ監視ウォッチドッグ
-│   ├── remote_reboot.sh             デバイスごとリモート再起動（ホスト側）
+│   ├── smb400_reboot.sh             デバイスごとリモート再起動（ホスト側）
 │   ├── write_usb_boot.sh            USBメモリへブートファイル3点を書き込む（要 sudo）
 │   ├── setup_proot.sh               Alpine rootfs + glibc-armhf 初回セットアップ
 │   ├── build_mirakc_armv7.sh        mirakc 3バイナリをソースからクロスビルド
@@ -649,7 +649,7 @@ curl -s http://<デバイスのIPアドレス>:40772/api/services | python3 -m j
 
 ```sh
 # ホスト（adb が使える端末）から
-scripts/remote_reboot.sh <デバイスのIPアドレス>:5555
+scripts/smb400_reboot.sh <デバイスのIPアドレス>:5555
 
 # リポジトリのルートなら
 make remote-reboot ADB_TARGET=<デバイスのIPアドレス>:5555
