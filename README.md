@@ -103,7 +103,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   ├── usb_boot_files/              生成物: bootargs.bin / root_rsa_pub_crc.bin / rsa_key.pem（gitignore 対象）
 │   └── initramfs_overlay/           initramfs オーバーレイファイル
 │       └── start_mirakc.sh          mirakc 自動起動スクリプト（電源 ON 時に実行される版）
-├── bin/                             ビルドしたチューナー/デコーダ/ACASプロキシの出力先（make build-bins で生成）
+├── bin/                             ビルドしたチューナー/デコーダ/ACASプロキシの出力先（make build-bins で生成。リモート用は bin/x86/）
 ├── tmp/mirakc-armv7/                mirakc 本体 ARMv7 (glibc) バイナリの出力先（gitignore 対象・コミットされない）
 │   ├── mirakc                       mirakc 本体（yuchi0531/mirakc-BS4K fork）
 │   ├── mirakc-arib                  GR / BS / CS(2K) 用フィルタ・ジョブ
@@ -630,7 +630,7 @@ make start                 # start_mirakc.sh が acas_proxy も起動
 
 ```sh
 # x86_64 (Linux) でリモート用バイナリをビルド
-make build-decoders-remote    # bin/b61dec-remote, bin/b25dec-remote (x86_64)
+make build-decoders-remote    # bin/x86/b61dec-remote, bin/x86/b25dec-remote (x86_64)
 
 # 復号（BS4K/BS8K）
 cat scrambled.tlv | decoder.sh 45168 --acas 192.168.1.133:40773 > plain.tlv

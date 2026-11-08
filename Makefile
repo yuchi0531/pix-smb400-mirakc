@@ -135,15 +135,15 @@ build-bins: android-libs
 # ACAS は SMB400 の acas_proxy を -acas host:port で使う（ローカルACAS不要）。
 # Windows x86_64 は MinGW-w64 + OpenSSL で同様にビルドできる（README 参照）。
 build-decoders-remote:
-	@mkdir -p bin
+	@mkdir -p bin/x86
 	@echo "[*] Building b61dec-remote (x86_64, host OpenSSL)..."
-	$(CC_REMOTE) $(CFLAGS_REMOTE) -Isrc -o bin/b61dec-remote \
+	$(CC_REMOTE) $(CFLAGS_REMOTE) -Isrc -o bin/x86/b61dec-remote \
 	    src/b61dec.c src/acas_remote.c -lcrypto -ldl -pthread
 	@echo "[*] Building b25dec-remote (x86_64)..."
-	$(CC_REMOTE) $(CFLAGS_REMOTE) -Isrc -o bin/b25dec-remote \
+	$(CC_REMOTE) $(CFLAGS_REMOTE) -Isrc -o bin/x86/b25dec-remote \
 	    src/b25dec.c src/acas_remote.c -ldl -pthread
-	@echo "[+] Built x86_64: bin/b61dec-remote, bin/b25dec-remote"
-	@file bin/b61dec-remote bin/b25dec-remote
+	@echo "[+] Built x86_64: bin/x86/b61dec-remote, bin/x86/b25dec-remote"
+	@file bin/x86/b61dec-remote bin/x86/b25dec-remote
 
 # mirakc / mirakc-arib / mirakc-arib-tlv (yuchi0531/mirakc-BS4K fork) を
 # ARMv7 (glibc) 向けにソースからクロスビルドする。

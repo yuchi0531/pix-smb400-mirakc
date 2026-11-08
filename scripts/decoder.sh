@@ -65,7 +65,10 @@ if [ -z "${BINDIR:-}" ]; then
 fi
 
 pick_bin() {
-    if [ -x "$BINDIR/$1-remote" ]; then
+    # リモート用は bin/x86/ に出力される。無ければ通常の bin/ (または BINDIR) を使う。
+    if [ -x "$BINDIR/x86/$1-remote" ]; then
+        echo "$BINDIR/x86/$1-remote"
+    elif [ -x "$BINDIR/$1-remote" ]; then
         echo "$BINDIR/$1-remote"
     else
         echo "$BINDIR/$1"
