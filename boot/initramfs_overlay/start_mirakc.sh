@@ -72,8 +72,7 @@ pkill -f "b25dec" 2>/dev/null || true
 
 # --- ACAS APDU proxy (remote decoder support) ---
 # Exposes the on-device ACAS chip over TCP (default 40773).  Only starts if
-# the binary has been pushed.  Token is read from
-# /data/local/tmp/.acas_proxy_token when present.
+# the binary has been pushed.  No authentication: LAN-trust only.
 ACAS_PROXY=/data/local/tmp/acas_proxy
 ACAS_PROXY_PID=/data/local/tmp/acas_proxy.pid
 ACAS_PROXY_LOG=/data/local/tmp/acas_proxy.log
@@ -81,14 +80,7 @@ ACAS_PROXY_PORT=40773
 if [ -x "$ACAS_PROXY" ]; then
     pkill -f "$ACAS_PROXY" 2>/dev/null || true
     rm -f "$ACAS_PROXY_PID"
-    token=""
-    [ -f /data/local/tmp/.acas_proxy_token ] && \
-        token=$(cat /data/local/tmp/.acas_proxy_token 2>/dev/null | tr -d '[:space:]')
-    if [ -n "$token" ]; then
-        setsid "$ACAS_PROXY" -p "$ACAS_PROXY_PORT" -t "$token" >> "$ACAS_PROXY_LOG" 2>&1 &
-    else
-        setsid "$ACAS_PROXY" -p "$ACAS_PROXY_PORT" >> "$ACAS_PROXY_LOG" 2>&1 &
-    fi
+    setsid "$ACAS_PROXY" -p "$ACAS_PROXY_PORT" >> "$ACAS_PROXY_LOG" 2>&1 &
     echo $! > "$ACAS_PROXY_PID"
     echo "[mirakc] acas_proxy launched (pid=$!, port=$ACAS_PROXY_PORT)" >> "$LOG"
 else

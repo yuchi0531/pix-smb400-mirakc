@@ -174,7 +174,6 @@ static void m2_decrypt(M2 *m, int type, uint8_t *buf, int size) {
 static void *g_lib;
 static int  g_remote;
 static char g_remote_spec[128];
-static char g_remote_token[128];
 typedef int (*fn0)(void);
 typedef int (*set_fn)(uint8_t *, int, uint8_t *, int *);
 typedef int (*get_fn)(uint8_t *, int *);
@@ -484,11 +483,8 @@ int main(int argc, char **argv) {
         } else if (!strcmp(argv[i], "-acas") && i + 1 < argc) {
             snprintf(g_remote_spec, sizeof(g_remote_spec), "%s", argv[++i]);
             g_remote = 1;
-        } else if (!strcmp(argv[i], "-acas-token") && i + 1 < argc) {
-            snprintf(g_remote_token, sizeof(g_remote_token), "%s", argv[++i]);
         } else {
-            fprintf(stderr, "Usage: %s [-acas host:port] [-acas-token token] [-v]\n",
-                    argv[0]);
+            fprintf(stderr, "Usage: %s [-acas host:port] [-v]\n", argv[0]);
             return 1;
         }
     }
@@ -499,7 +495,7 @@ int main(int argc, char **argv) {
 
     int r;
     if (g_remote) {
-        if (acas_remote_connect(g_remote_spec, g_remote_token) < 0) {
+        if (acas_remote_connect(g_remote_spec) < 0) {
             fprintf(stderr, "b25dec: cannot connect to ACAS proxy %s\n", g_remote_spec);
             return 1;
         }

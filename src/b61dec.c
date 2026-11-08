@@ -160,7 +160,6 @@ static sw_get_fn sw_GetAtr;
 
 static int  g_remote;
 static char g_remote_spec[128];
-static char g_remote_token[128];
 
 static int sci_load(void) {
     if (g_remote) return 0; /* remote ACAS proxy: no local SCI access */
@@ -535,11 +534,9 @@ static void print_stats(void) {
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "Usage: %s -key <64-hex-chars> [-acas host:port] [-acas-token token]\n"
-        "          [-noauth] [-v]\n\n"
+        "Usage: %s -key <64-hex-chars> [-acas host:port] [-noauth] [-v]\n\n"
         "  -key <hex>      32-byte ACAS master key (64 hex chars)\n"
         "  -acas <h:p>     use a remote ACAS APDU proxy instead of local SCI\n"
-        "  -acas-token <t> token required by the proxy (optional)\n"
         "  -noauth         Skip A0 hash verification (debug)\n"
         "  -v              Verbose: print per-packet scramble detection info\n\n"
         "Reads TLV/MMTP from stdin, writes descrambled TLV to stdout.\n\n"
@@ -589,8 +586,6 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-acas")==0 && i+1<argc) {
             snprintf(g_remote_spec, sizeof(g_remote_spec), "%s", argv[++i]);
             g_remote = 1;
-        } else if (strcmp(argv[i], "-acas-token")==0 && i+1<argc) {
-            snprintf(g_remote_token, sizeof(g_remote_token), "%s", argv[++i]);
         } else if (strcmp(argv[i], "-noauth")==0) {
             skip_verify = 1;
         } else if (strcmp(argv[i], "-v")==0) {
@@ -616,7 +611,7 @@ int main(int argc, char **argv) {
     if (g_remote) {
         /* Remote decoder: the ACAS chip is on the SMB400.  Fetch the A0
          * command/response from the proxy and derive KCL locally. */
-        if (acas_remote_connect(g_remote_spec, g_remote_token) < 0) {
+        if (acas_remote_connect(g_remote_spec) < 0) {
             fprintf(stderr, "b61dec: cannot connect to ACAS proxy %s\n", g_remote_spec);
             return 1;
         }

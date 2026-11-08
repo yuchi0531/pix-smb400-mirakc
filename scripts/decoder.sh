@@ -17,7 +17,6 @@
 #   ACAS_KEY        32-byte ACAS master key (64 hex chars) for b61dec
 #   ACAS_KEY_FILE   file containing the key (default /data/local/tmp/.acas_key)
 #   ACAS_PROXY      default --acas value, e.g. 192.168.1.133:40773
-#   ACAS_TOKEN      default --acas-token value
 #
 # The proxy runs on the SMB400 (acas_proxy, default port 40773).
 
@@ -30,7 +29,6 @@ usage() {
 
 CHANNEL=""
 ACAS="${ACAS_PROXY:-}"
-TOKEN="${ACAS_TOKEN:-}"
 VERBOSE=""
 
 while [ "$#" -gt 0 ]; do
@@ -38,9 +36,6 @@ while [ "$#" -gt 0 ]; do
         --acas)
             [ "$#" -ge 2 ] || usage
             ACAS="$2"; shift 2 ;;
-        --acas-token)
-            [ "$#" -ge 2 ] || usage
-            TOKEN="$2"; shift 2 ;;
         -v|--verbose)
             VERBOSE="-v"; shift ;;
         -h|--help)
@@ -91,7 +86,6 @@ case "$CHANNEL" in
         BIN=$(pick_bin b61dec)
         set -- -key "$ACAS_KEY"
         [ -n "$ACAS" ]  && set -- "$@" -acas "$ACAS"
-        [ -n "$TOKEN" ] && set -- "$@" -acas-token "$TOKEN"
         [ -n "$VERBOSE" ] && set -- "$@" -v
         [ -x "$BIN" ] || { echo "decoder.sh: $BIN not found" >&2; exit 1; }
         exec "$BIN" "$@"
@@ -101,7 +95,6 @@ case "$CHANNEL" in
         BIN=$(pick_bin b25dec)
         set --
         [ -n "$ACAS" ]  && set -- "$@" -acas "$ACAS"
-        [ -n "$TOKEN" ] && set -- "$@" -acas-token "$TOKEN"
         [ -n "$VERBOSE" ] && set -- "$@" -v
         [ -x "$BIN" ] || { echo "decoder.sh: $BIN not found" >&2; exit 1; }
         exec "$BIN" "$@"

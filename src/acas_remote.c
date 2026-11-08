@@ -72,7 +72,7 @@ static void put_u16(uint8_t *p, uint16_t v) {
     p[1] = (uint8_t)(v & 0xff);
 }
 
-int acas_remote_connect(const char *spec, const char *token) {
+int acas_remote_connect(const char *spec) {
     char host[128];
     int port = ACAS_REMOTE_DEFAULT_PORT;
     const char *colon;
@@ -134,12 +134,7 @@ int acas_remote_connect(const char *spec, const char *token) {
     int one = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 
-    size_t toklen = token ? strlen(token) : 0;
-    if (toklen > 255) toklen = 255;
-    uint8_t token_len = (uint8_t)toklen;
-    if (write_full(fd, ACAS_REMOTE_MAGIC, 4) < 0 ||
-        write_full(fd, &token_len, 1) < 0 ||
-        (token_len && write_full(fd, token, token_len) < 0)) {
+    if (write_full(fd, ACAS_REMOTE_MAGIC, 4) < 0) {
         snprintf(g_last_error, sizeof(g_last_error), "handshake write failed");
         close(fd);
         return -1;

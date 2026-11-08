@@ -152,7 +152,6 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 | `/data/local/tmp/mirakc-root/` | Alpine rootfs |
 | `/data/local/tmp/acas_proxy` | ACAS APDU プロキシ（リモートデコーダ用、TCP 40773） |
 | `/data/local/tmp/acas_proxy.log` | acas_proxy ログ |
-| `/data/local/tmp/.acas_proxy_token` | プロキシの共有トークン（任意） |
 | `/data/local/tmp/mirakc.log` | ログ |
 | `/data/local/tmp/mirakc-start.pid` | pidfile |
 | `/data/local/tmp/start_mirakc.sh` | 起動スクリプト（`make start` から実行） |
@@ -618,8 +617,8 @@ make start                 # start_mirakc.sh が acas_proxy も起動
 ```
 
 - 待受: `0.0.0.0:40773`（`/data/local/tmp/acas_proxy.log`）
-- トークン: `/data/local/tmp/.acas_proxy_token` があると `-t` 付きで起動
-  （`echo '<token>' > /data/local/tmp/.acas_proxy_token; chmod 600 ...`）
+- 認証なし（トークン不要）。LAN 内のホストからそのまま利用できます。
+  信頼できるネットワークでのみ使用してください。
 - チップ共有: `SCI_WRAPPER_InitForAllProcess` + `PIXELA_DeviceSharing` の CAS/CKC ロックを使用。
   プロキシが APDU を直列化するため、複数クライアント（複数チューナー）で共有できます。
 - A0（GetCkc）はプロキシ起動時に1回だけ実行し、`a0_cmd/a0_resp` をクライアントへ配布します。
@@ -640,12 +639,12 @@ cat scrambled.ts  | decoder.sh BS15_0 --acas 192.168.1.133:40773 > plain.ts
 
 - `decoder.sh` はチャンネル形式で `b61dec` / `b25dec` を自動選択します。
 - BS4K は ACAS マスターキーが必要です（`ACAS_KEY` 環境変数、または `ACAS_KEY_FILE`）。
-- トークンを使う場合は `--acas-token <token>`（または `ACAS_TOKEN`）。
+- 追加オプションは不要です（認証なし）。
 - Windows は MinGW-w64 + OpenSSL で `b61dec.c` / `b25dec.c` / `acas_remote.c` をビルドできます。
 
 ### 3. セキュリティ
 
-`acas_proxy` は LAN 内に ACAS 操作を開放します。必ずトークンを設定し、信頼できるネットワークでのみ使用してください。
+`acas_proxy` は LAN 内に ACAS 操作を開放します（**認証なし**）。信頼できるネットワークでのみ使用してください。
 `ro.adb.secure=0` の本デバイスは既に LAN から root 操作可能なため、ファイアウォール/ネットワーク分離も推奨します。
 
 ### ffplay でリアルタイム視聴

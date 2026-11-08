@@ -9,7 +9,7 @@
  * use this client instead of dlopen()ing libstationtv_lt_px_stream.so.
  *
  * Wire protocol (big-endian u16 lengths):
- *   handshake: "ACAS" | u8 token_len | token
+ *   handshake: "ACAS"
  *              <- u8 status (0 = OK)
  *   APDU:      u8 0x01 | u16 len | data
  *              <- u8 status | u16 len | data
@@ -31,9 +31,9 @@
 #define ACAS_REMOTE_CMD_GET_ATR  0x03
 #define ACAS_REMOTE_CMD_PING     0x04
 
-/* Connect to "host[:port]" (port defaults to 40773).  token may be NULL/"".
+/* Connect to "host[:port]" (port defaults to 40773).
  * Returns 0 on success, -1 on failure. */
-int acas_remote_connect(const char *spec, const char *token);
+int acas_remote_connect(const char *spec);
 
 /* Send one APDU and receive the chip response.  Returns 0 on success. */
 int acas_remote_exchange(const uint8_t *cmd, int cmd_len,

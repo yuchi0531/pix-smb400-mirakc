@@ -11,9 +11,11 @@
  * handshake once, so every client can derive the same KCL from the
  * returned a0_cmd/a0_resp.
  *
- * Usage: acas_proxy [-p port] [-t token] [-v]
+ * Usage: acas_proxy [-p port] [-v]
  *   default port: 40773
- *   token:        optional shared secret (clients must send the same value)
+ *
+ * No authentication: any host that can reach the port can use the ACAS
+ * chip.  Run only on a trusted LAN.
  *
  * Protocol: see src/acas_remote.h.
  *
@@ -65,7 +67,6 @@ static get_fn  sw_GetAtr;
 static void   *g_lib;
 static int     g_verbose;
 static int     g_port = ACAS_REMOTE_DEFAULT_PORT;
-static char   *g_token;
 static int     g_listen = -1;
 static volatile int g_stop;
 
@@ -241,28 +242,10 @@ static void handle_atr(int fd) {
 static void *client_thread(void *arg) {
     int fd = (int)(intptr_t)arg;
     uint8_t magic[4];
-    uint8_t token_len = 0;
-    char token[256] = {0};
 
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &(int){1}, sizeof(int));
 
     if (read_full(fd, magic, 4) < 0 || memcmp(magic, ACAS_REMOTE_MAGIC, 4) != 0) {
-        close(fd);
-        return NULL;
-    }
-    if (read_full(fd, &token_len, 1) < 0 || token_len > 0) {
-        if (token_len > 0) {
-            if (read_full(fd, token, token_len) < 0) {
-                close(fd);
-                return NULL;
-            }
-            token[token_len] = '\0';
-        }
-    }
-    if (g_token && strcmp(g_token, token) != 0) {
-        uint8_t st = 1;
-        write_full(fd, &st, 1);
-        logmsg("client rejected (bad token)");
         close(fd);
         return NULL;
     }
@@ -311,9 +294,8 @@ static void on_signal(int sig) {
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "Usage: %s [-p port] [-t token] [-v]\n\n"
+        "Usage: %s [-p port] [-v]\n\n"
         "  -p port   listen port (default %d)\n"
-        "  -t token  shared secret required from clients (optional)\n"
         "  -v        verbose\n\n"
         "Exposes the on-device ACAS chip (SCI APDU) over TCP for remote\n"
         "b61dec / b25dec.  Run as root; stop pix_airtuner first.\n",
@@ -324,8 +306,6 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
             g_port = atoi(argv[++i]);
-        } else if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
-            g_token = argv[++i];
         } else if (strcmp(argv[i], "-v") == 0) {
             g_verbose = 1;
         } else {
@@ -368,9 +348,7 @@ int main(int argc, char **argv) {
     }
     g_listen = fd;
 
-    logmsg("listening on 0.0.0.0:%d%s", g_port,
-           g_token ? " (token required)" : " (no token)");
-    if (!g_token) logmsg("WARNING: no -t token; any LAN host can use the ACAS chip");
+    logmsg("listening on 0.0.0.0:%d", g_port);
 
     while (!g_stop) {
         int cfd = accept(fd, NULL, NULL);
