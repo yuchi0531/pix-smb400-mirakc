@@ -320,10 +320,10 @@ ARMv7 (glibc) 版の mirakc 3バイナリはリポジトリに含まれません
 make build-mirakc-armv7       # = bash scripts/build_mirakc_armv7.sh
 ```
 
-スクリプトは [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K)（既定 `main`＝最新）、[yuchi0531/mirakc-arib-tlv](https://github.com/yuchi0531/mirakc-arib-tlv)（v0.1.0）、[mirakc/mirakc-arib](https://github.com/mirakc/mirakc-arib)（既定 `0.24.40`＝最新リリースタグ）を `tmp/mirakc-cross-build/` に clone してクロスビルドし、`tmp/mirakc-armv7/` を更新します。ビルドは再利用のため再実行可能です。
+スクリプトは [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K)（既定ブランチ `smb400-minimal` = BS4K/TLV 差分のみの最小ブランチ）、[yuchi0531/mirakc-arib-tlv](https://github.com/yuchi0531/mirakc-arib-tlv)（v0.1.0）、[mirakc/mirakc-arib](https://github.com/mirakc/mirakc-arib)（既定 `0.24.40`＝最新リリースタグ）を `tmp/mirakc-cross-build/` に clone してクロスビルドし、`tmp/mirakc-armv7/` を更新します。ビルドは再利用のため再実行可能です。
 
-> 既定では最新をビルドします。再現性のため特定のコミット／タグに固定したい場合は
-> `MIRAKC_REF` / `MIRAKC_TLV_REF` / `MIRAKC_ARIB_REF` を指定してください（例: `MIRAKC_ARIB_REF=0.24.40 make build-mirakc-armv7`）。
+> 既定では追従先ブランチの最新（mirakc-BS4K は `smb400-minimal`）をビルドします。再現性のため特定のコミット／タグに固定したい場合は
+> `MIRAKC_REF` / `MIRAKC_TLV_REF` / `MIRAKC_ARIB_REF` を指定してください（例: `MIRAKC_REF=858a5b7 make build-mirakc-armv7`）。
 
 ---
 
@@ -723,8 +723,8 @@ adb -s <デバイスのIPアドレス>:5555 shell "grep MemAvailable /proc/memin
   - `mirakc-arib` は `vendor/aribb24` を `./bootstrap`（autoreconf）→ `./configure` でビルドするため、**autotools が無いと失敗します**。`--no-install-recommends` で構築したコンテナでは特に不足しがちです（`sudo apt install autoconf automake libtool pkg-config patch`）。
 - **rust target 不足**: スクリプトが自動で `rustup target add armv7-unknown-linux-gnueabihf` を実行します。手動なら `rustup target add armv7-unknown-linux-gnueabihf`。
 - **ネットワーク / GitHub に到達できない**: `git clone` に失敗します。プロキシ環境では `https_proxy` 等を設定します。
-- **Rust が古い**: `mirakc-BS4K` の `main` は `rust-version = 1.99.0` を要求します。`rustup update stable` で更新してください（古いと `cargo build` が MSRV エラーで止まります）。
-- ソースの追従先は `MIRAKC_REF` / `MIRAKC_TLV_REF` / `MIRAKC_ARIB_REF` で変更できます（既定は `main` / `v0.1.0` / `0.24.40`）。特定のコミットに固定すれば再現性が上がります。
+- **Rust が古い**: ブランチごとに MSRV が異なります（`smb400-minimal` は `rust-version = 1.98.1`、`main` は 1.99.0）。`rustup update stable` で更新してください（古いと `cargo build` が MSRV エラーで止まります）。
+- ソースの追従先は `MIRAKC_REF` / `MIRAKC_TLV_REF` / `MIRAKC_ARIB_REF` で変更できます（既定は `smb400-minimal` / `v0.1.0` / `0.24.40`）。特定のコミットに固定すれば再現性が上がります。
 
 ### mirakc が起動しない
 

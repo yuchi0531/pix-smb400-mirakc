@@ -33,7 +33,7 @@ OUT_DIR="$REPO_ROOT/tmp/mirakc-armv7"
 TARGET=armv7-unknown-linux-gnueabihf
 
 MIRAKC_REPO="${MIRAKC_REPO:-https://github.com/yuchi0531/mirakc-BS4K.git}"
-MIRAKC_REF="${MIRAKC_REF:-main}" # fork の最新。固定したい場合はコミット/タグを指定
+MIRAKC_REF="${MIRAKC_REF:-smb400-minimal}" # BS4K/TLV 差分のみの最小ブランチ。固定したい場合はコミット/タグも可
 MIRAKC_TLV_REPO="${MIRAKC_TLV_REPO:-https://github.com/yuchi0531/mirakc-arib-tlv.git}"
 MIRAKC_TLV_REF="${MIRAKC_TLV_REF:-v0.1.0}"
 MIRAKC_ARIB_REPO="${MIRAKC_ARIB_REPO:-https://github.com/mirakc/mirakc-arib.git}"
