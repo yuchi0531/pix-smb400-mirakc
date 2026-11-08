@@ -100,6 +100,34 @@ int acas_remote_connect(const char *spec) {
         return -1;
     }
 
+#if defined(ACAS_ANDROID)
+    /* The Android binaries are compiled with glibc headers but linked against
+     * bionic libc.  bionic's getaddrinfo() does not return a compatible
+     * struct addrinfo (ai_addr comes back NULL), so connect() fails with
+     * EFAULT.  Build the sockaddr directly from the numeric IPv4 address
+     * instead.  Remote decoders on Linux/Windows still use getaddrinfo()
+     * below, so host names keep working there. */
+    struct sockaddr_in sin;
+    memset(&sin, 0, sizeof(sin));
+    sin.sin_family = AF_INET;
+    sin.sin_port = htons((uint16_t)port);
+    if (inet_pton(AF_INET, host, &sin.sin_addr) != 1) {
+        snprintf(g_last_error, sizeof(g_last_error),
+                 "invalid IPv4 address '%s'", host);
+        return -1;
+    }
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        snprintf(g_last_error, sizeof(g_last_error), "socket: %s", strerror(errno));
+        return -1;
+    }
+    if (connect(fd, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+        snprintf(g_last_error, sizeof(g_last_error), "connect(%s:%d): %s",
+                 host, port, strerror(errno));
+        close(fd);
+        return -1;
+    }
+#else
     struct addrinfo hints;
     struct addrinfo *res = NULL;
     memset(&hints, 0, sizeof(hints));
@@ -130,6 +158,7 @@ int acas_remote_connect(const char *spec) {
         return -1;
     }
     freeaddrinfo(res);
+#endif
 
     int one = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
