@@ -119,7 +119,10 @@ build-bins: android-libs
 	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so $(ANDROID_LIBS)/ld-android.so \
 	    -o bin/b21dec
 	@echo "[*] Building acas_proxy (remote decoder ACAS bridge)..."
-	$(CC_ARM) $(CFLAGS_ARM) -O2 \
+	# -std=gnu17 + FORTIFY off: GCC 15 defaults to gnu23, and glibc headers
+	# then emit C23-only symbols (__isoc23_strtol, __fprintf_chk) that bionic
+	# libc does not provide.  Force C17 and disable FORTIFY for bionic.
+	$(CC_ARM) $(CFLAGS_ARM) -O2 -std=gnu17 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 \
 	    src/startup.c src/acas_proxy.c \
 	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so $(ANDROID_LIBS)/ld-android.so \
 	    -o bin/acas_proxy
