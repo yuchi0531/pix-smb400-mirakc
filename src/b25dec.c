@@ -1,5 +1,5 @@
 /*
- * b21dec.c — Conventional 2K BS/CS (ISDB-S, ARIB STD-B25 / B-CAS) MPEG-TS
+ * b25dec.c — Conventional 2K BS/CS (ISDB-S, ARIB STD-B25 / B-CAS) MPEG-TS
  *            descrambler for PIX-SMB400, using the on-device ACAS chip.
  *
  * Reads a scrambled MPEG-TS stream from stdin (tuner-stream-bs-ng mode=1 output),
@@ -7,7 +7,7 @@
  * (in conventional/B-CAS "ACAS mode", APDU P2=0x02) to obtain MULTI2 scramble
  * keys, descrambles payloads with MULTI2, and writes clean MPEG-TS to stdout.
  *
- *   tuner-stream-bs-ng 0 1 <IF_kHz> 0 | b21dec
+ *   tuner-stream-bs-ng 0 1 <IF_kHz> 0 | b25dec
  *
  * Unlike b61dec (BS4K / ARIB STD-B61 / ACAS-RMP / AES-128-CTR), this path uses
  * the chip's *conventional* CAS function:
@@ -22,7 +22,7 @@
  * (multi2_simd.h pulls x86 intrinsics so the upstream files don't cross-compile
  * to ARM; only the scalar core is needed here).
  *
- * Build (Android ARM32): see Makefile target build-b21dec
+ * Build (Android ARM32): see Makefile target build-b25dec
  */
 #include <stdint.h>
 #include <string.h>
@@ -185,8 +185,8 @@ static get_fn sw_GetData, sw_GetAtr;
 static int sci_load(void) {
     if (g_remote) return 0;
     g_lib = dlopen("/vendor/lib/libstationtv_lt_px_stream.so", RTLD_NOW);
-    if (!g_lib) { fprintf(stderr, "b21dec: dlopen: %s\n", dlerror()); return -1; }
-#define LD(v,s) v = dlsym(g_lib,s); if(!v){fprintf(stderr,"b21dec: dlsym %s: %s\n",s,dlerror());return -1;}
+    if (!g_lib) { fprintf(stderr, "b25dec: dlopen: %s\n", dlerror()); return -1; }
+#define LD(v,s) v = dlsym(g_lib,s); if(!v){fprintf(stderr,"b25dec: dlsym %s: %s\n",s,dlerror());return -1;}
     LD(sw_InitAll, "SCI_WRAPPER_InitForAllProcess")
     LD(sw_ResetF,  "SCI_WRAPPER_ResetForced")
     LD(sw_WaitAct, "SCI_WRAPPER_WaitForActivation")
@@ -203,10 +203,10 @@ static int acas_exchange(const uint8_t *cmd, int clen, uint8_t *resp, int *rlen)
     }
     uint8_t dummy[4]; int dl = 0;
     int r = sw_SetData((uint8_t *)cmd, clen, dummy, &dl);
-    if (r != 0) { fprintf(stderr, "b21dec: SetData err=%d\n", r); return -1; }
+    if (r != 0) { fprintf(stderr, "b25dec: SetData err=%d\n", r); return -1; }
     *rlen = 256;
     r = sw_GetData(resp, rlen);
-    if (r != 0) { fprintf(stderr, "b21dec: GetData err=%d\n", r); return -1; }
+    if (r != 0) { fprintf(stderr, "b25dec: GetData err=%d\n", r); return -1; }
     return 0;
 }
 
@@ -215,13 +215,13 @@ static int acas_bcas_init(M2 *m) {
     static const uint8_t cmd[5] = { 0x90, 0x30, 0x00, 0x02, 0x00 };
     uint8_t resp[256]; int rlen;
     if (acas_exchange(cmd, 5, resp, &rlen) < 0) return -1;
-    if (rlen < 57) { fprintf(stderr, "b21dec: INIT short resp (%d)\n", rlen); return -1; }
+    if (rlen < 57) { fprintf(stderr, "b25dec: INIT short resp (%d)\n", rlen); return -1; }
     int rc = (resp[4] << 8) | resp[5];
     int casid = (resp[6] << 8) | resp[7];
-    if (rc != 0x2100) { fprintf(stderr, "b21dec: INIT rc=0x%04x (want 0x2100)\n", rc); return -1; }
+    if (rc != 0x2100) { fprintf(stderr, "b25dec: INIT rc=0x%04x (want 0x2100)\n", rc); return -1; }
     m2_set_system_key(m, resp + 16);
     m2_set_init_cbc(m, resp + 48);
-    fprintf(stderr, "b21dec: ACAS conventional init OK (ca_system_id=0x%04x)\n", casid);
+    fprintf(stderr, "b25dec: ACAS conventional init OK (ca_system_id=0x%04x)\n", casid);
     return 0;
 }
 
@@ -235,7 +235,7 @@ static int acas_bcas_ecm(const uint8_t *body, int blen, uint8_t ks16[16]) {
     cmd[5 + blen] = 0x00;
     uint8_t resp[256]; int rlen;
     if (acas_exchange(cmd, 6 + blen, resp, &rlen) < 0) return -1;
-    if (rlen < 25) { fprintf(stderr, "b21dec: ECM short resp (%d)\n", rlen); return -1; }
+    if (rlen < 25) { fprintf(stderr, "b25dec: ECM short resp (%d)\n", rlen); return -1; }
     int rc = (resp[4] << 8) | resp[5];
     memcpy(ks16, resp + 6, 16);
     return rc;
@@ -413,7 +413,7 @@ static void process_ecm(int slot, const uint8_t *pkt) {
     g_stat_ecm_calls++;
     if (rc < 0) return;
     if (rc != 0x0800) {
-        fprintf(stderr, "b21dec: ECM pid=0x%04x rc=0x%04x (not viewable)\n", e->pid, rc);
+        fprintf(stderr, "b25dec: ECM pid=0x%04x rc=0x%04x (not viewable)\n", e->pid, rc);
         /* keep previous keys; cache to avoid hammering the chip */
     } else {
         m2_set_scramble_key(&e->m2, ks16);
@@ -472,7 +472,7 @@ static void flush_pending(void) {
 }
 
 static void print_stats(void) {
-    fprintf(stderr, "b21dec: pkts=%ld scrambled=%ld descrambled=%ld ecm_calls=%ld\n",
+    fprintf(stderr, "b25dec: pkts=%ld scrambled=%ld descrambled=%ld ecm_calls=%ld\n",
             g_stat_pkts, g_stat_scrambled, g_stat_descrambled, g_stat_ecm_calls);
 }
 
@@ -500,15 +500,15 @@ int main(int argc, char **argv) {
     int r;
     if (g_remote) {
         if (acas_remote_connect(g_remote_spec, g_remote_token) < 0) {
-            fprintf(stderr, "b21dec: cannot connect to ACAS proxy %s\n", g_remote_spec);
+            fprintf(stderr, "b25dec: cannot connect to ACAS proxy %s\n", g_remote_spec);
             return 1;
         }
-        fprintf(stderr, "b21dec: remote ACAS connected (%s)\n", g_remote_spec);
+        fprintf(stderr, "b25dec: remote ACAS connected (%s)\n", g_remote_spec);
     } else {
         if (sci_load() < 0) return 1;
-        if ((r = sw_InitAll()) != 0) { fprintf(stderr, "b21dec: InitForAllProcess=%d\n", r); return 1; }
-        if ((r = sw_ResetF())  != 0) { fprintf(stderr, "b21dec: ResetForced=%d\n", r); return 1; }
-        if ((r = sw_WaitAct()) != 0) { fprintf(stderr, "b21dec: WaitForActivation=%d\n", r); return 1; }
+        if ((r = sw_InitAll()) != 0) { fprintf(stderr, "b25dec: InitForAllProcess=%d\n", r); return 1; }
+        if ((r = sw_ResetF())  != 0) { fprintf(stderr, "b25dec: ResetForced=%d\n", r); return 1; }
+        if ((r = sw_WaitAct()) != 0) { fprintf(stderr, "b25dec: WaitForActivation=%d\n", r); return 1; }
     }
 
     M2 cardm = {0}; cardm.round = 4;

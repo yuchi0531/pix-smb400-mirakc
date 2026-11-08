@@ -52,6 +52,9 @@ MIRAKC_WEBUI_DIR := tmp/mirakc-webui
 # 要件: gcc-arm-linux-gnueabi（sudo apt install gcc-arm-linux-gnueabi）
 #       libssl-dev（b61dec の OpenSSL ヘッダ用）
 CC_ARM       ?= arm-linux-gnueabi-gcc
+# リモートデコーダ用 (x86_64 Linux)。-m64 を明示してアーキテクチャを固定する。
+CC_REMOTE    ?= x86_64-linux-gnu-gcc
+CFLAGS_REMOTE ?= -std=gnu99 -O2 -m64
 ANDROID_LIBS := android-libs
 # _TIME_BITS=32 / _FILE_OFFSET_BITS=32: 新しい Debian/Ubuntu のクロスツールチェーンは
 # 64-bit time_t がデフォルトで __gettimeofday64 等を要求するが、Android bionic の
@@ -83,7 +86,7 @@ android-libs:
 	done
 
 # src/ から bin/ のバイナリ（tuner-stream-ng, tuner-stream-bs-ng, b61dec,
-# tuner-stream-bs, b21dec, acas_proxy）をビルド
+# tuner-stream-bs, b25dec, acas_proxy）をビルド
 # mirakc 本体 (mirakc / mirakc-arib / mirakc-arib-tlv) はここではビルドしない:
 # ソースからクロスビルドする（build-mirakc-armv7）。
 build-bins: android-libs
@@ -113,11 +116,11 @@ build-bins: android-libs
 	    src/startup.c src/tuner-stream-bs.c \
 	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so $(ANDROID_LIBS)/ld-android.so \
 	    -o bin/tuner-stream-bs
-	@echo "[*] Building b21dec (従来2K BS MULTI2 descrambler)..."
+	@echo "[*] Building b25dec (従来2K BS MULTI2 descrambler)..."
 	$(CC_ARM) $(CFLAGS_ARM) -O2 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -Wl,--no-as-needed \
-	    src/startup.c src/b21dec.c bin/acas_remote.o \
+	    src/startup.c src/b25dec.c bin/acas_remote.o \
 	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so $(ANDROID_LIBS)/ld-android.so \
-	    -o bin/b21dec
+	    -o bin/b25dec
 	@echo "[*] Building acas_proxy (remote decoder ACAS bridge)..."
 	# -std=gnu17 + FORTIFY off: GCC 15 defaults to gnu23, and glibc headers
 	# then emit C23-only symbols (__isoc23_strtol, __fprintf_chk) that bionic
@@ -126,20 +129,21 @@ build-bins: android-libs
 	    src/startup.c src/acas_proxy.c \
 	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so $(ANDROID_LIBS)/ld-android.so \
 	    -o bin/acas_proxy
-	@echo "[+] Built bin/tuner-stream-ng, tuner-stream-bs-ng, b61dec, tuner-stream-bs, b21dec, acas_proxy"
+	@echo "[+] Built bin/tuner-stream-ng, tuner-stream-bs-ng, b61dec, tuner-stream-bs, b25dec, acas_proxy"
 
-# リモートデコーダ用: b61dec / b21dec をホスト (Linux) 向けにビルドする。
+# リモートデコーダ用: b61dec / b25dec を x86_64 (Linux) 向けにビルドする。
 # ACAS は SMB400 の acas_proxy を -acas host:port で使う（ローカルACAS不要）。
-# Windows は MinGW-w64 + OpenSSL で同様にビルドできる（README 参照）。
+# Windows x86_64 は MinGW-w64 + OpenSSL で同様にビルドできる（README 参照）。
 build-decoders-remote:
 	@mkdir -p bin
-	@echo "[*] Building b61dec-remote (host OpenSSL)..."
-	gcc -std=gnu99 -O2 -Isrc -o bin/b61dec-remote \
+	@echo "[*] Building b61dec-remote (x86_64, host OpenSSL)..."
+	$(CC_REMOTE) $(CFLAGS_REMOTE) -Isrc -o bin/b61dec-remote \
 	    src/b61dec.c src/acas_remote.c -lcrypto -ldl -pthread
-	@echo "[*] Building b21dec-remote..."
-	gcc -std=gnu99 -O2 -Isrc -o bin/b21dec-remote \
-	    src/b21dec.c src/acas_remote.c -ldl -pthread
-	@echo "[+] Built bin/b61dec-remote, bin/b21dec-remote"
+	@echo "[*] Building b25dec-remote (x86_64)..."
+	$(CC_REMOTE) $(CFLAGS_REMOTE) -Isrc -o bin/b25dec-remote \
+	    src/b25dec.c src/acas_remote.c -ldl -pthread
+	@echo "[+] Built x86_64: bin/b61dec-remote, bin/b25dec-remote"
+	@file bin/b61dec-remote bin/b25dec-remote
 
 # mirakc / mirakc-arib / mirakc-arib-tlv (yuchi0531/mirakc-BS4K fork) を
 # ARMv7 (glibc) 向けにソースからクロスビルドする。
@@ -160,7 +164,7 @@ build-webui:
 # 初回は bin/ が未生成のため、先に存在チェックして案内を出す
 # （make build-bins がクロスツールチェーンで生成する）。
 check-tuner-bins:
-	@missing=""; for f in bin/tuner-stream-ng bin/tuner-stream-bs-ng bin/b61dec bin/tuner-stream-bs bin/b21dec bin/acas_proxy; do \
+	@missing=""; for f in bin/tuner-stream-ng bin/tuner-stream-bs-ng bin/b61dec bin/tuner-stream-bs bin/b25dec bin/acas_proxy; do \
 	    [ -f "$$f" ] || missing="$$missing $$f"; \
 	done; \
 	if [ -n "$$missing" ]; then \
@@ -178,7 +182,7 @@ push-bins: check-tuner-bins build-mirakc-armv7
 	$(ADB) push bin/tuner-stream-bs-ng $(DEVICE_TMP)/tuner-stream-bs-ng
 	$(ADB) push bin/b61dec             $(DEVICE_TMP)/b61dec
 	$(ADB) push bin/tuner-stream-bs    $(DEVICE_TMP)/tuner-stream-bs
-	$(ADB) push bin/b21dec             $(DEVICE_TMP)/b21dec
+	$(ADB) push bin/b25dec             $(DEVICE_TMP)/b25dec
 	$(ADB) push bin/acas_proxy         $(DEVICE_TMP)/acas_proxy
 	@echo "[*] Pushing mirakc binaries..."
 	$(ADB) shell mkdir -p $(MIRAKC_DIR)/bin
@@ -190,7 +194,7 @@ push-bins: check-tuner-bins build-mirakc-armv7
 	    $(DEVICE_TMP)/tuner-stream-bs-ng \
 	    $(DEVICE_TMP)/b61dec \
 	    $(DEVICE_TMP)/tuner-stream-bs \
-	    $(DEVICE_TMP)/b21dec \
+	    $(DEVICE_TMP)/b25dec \
 	    $(DEVICE_TMP)/acas_proxy \
 	    $(MIRAKC_DIR)/bin/mirakc \
 	    $(MIRAKC_DIR)/bin/mirakc-arib \
@@ -261,7 +265,7 @@ start:
 	    sleep 3; \
 	    pkill -9 mirakc 2>/dev/null; \
 	    kill -9 \$$(pgrep -f 'start_mirakc[.]sh' 2>/dev/null) 2>/dev/null; \
-	    pkill -9 b61dec 2>/dev/null; pkill -9 b21dec 2>/dev/null; \
+	    pkill -9 b61dec 2>/dev/null; pkill -9 b25dec 2>/dev/null; \
 	    pkill -9 tunertest 2>/dev/null; \
 	    pkill -9 -f tuner-stream 2>/dev/null; true"
 	@sleep 1
@@ -285,7 +289,7 @@ stop:
 	    pkill -9 mirakc 2>/dev/null; \
 	    kill -9 \$$(pgrep -f 'start_mirakc[.]sh' 2>/dev/null) 2>/dev/null; \
 	    pkill -9 b61dec 2>/dev/null; \
-	    pkill -9 b21dec 2>/dev/null; \
+	    pkill -9 b25dec 2>/dev/null; \
 	    pkill -9 tunertest 2>/dev/null; \
 	    pkill -9 -f tuner-stream 2>/dev/null; \
 	    pkill -9 -f crash_guard.sh 2>/dev/null; \
@@ -321,7 +325,7 @@ test:
 	    | od -v -t x1 2>/dev/null | head -4
 
 # CS CS2 から 5 秒受信して MPEG-TS の先頭バイトを表示
-# チューナー出力は「生（スクランブル済み）MPEG-TS」。復号は b21dec / decoder.sh。
+# チューナー出力は「生（スクランブル済み）MPEG-TS」。復号は b25dec / decoder.sh。
 test-cs:
 	@echo "Streaming CS CS2 for 5s (raw TS)..."
 	@curl -s --max-time 8 http://$(DEVICE_IP):40772/api/channels/CS/CS2/stream \
@@ -334,7 +338,7 @@ help:
 	@echo "SMB400 mirakc デプロイ Makefile"
 	@echo ""
 	@echo "  make build-bins          src/ からチューナー/デコーダ/acas_proxy をビルド"
-	@echo "  make build-decoders-remote  リモート用 b61dec/b21dec をホスト向けにビルド"
+	@echo "  make build-decoders-remote  リモート用 b61dec/b25dec を x86_64 向けにビルド"
 	@echo "  make android-libs        デバイスから Android システムライブラリを取得"
 	@echo "  make build-mirakc-armv7  mirakc 3バイナリ (mirakc-BS4K fork) をソースからビルド"
 	@echo "  make build-webui         mirakc WebUI (mirakc-webui) をソースからビルド"

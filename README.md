@@ -119,7 +119,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   ├── start_mirakc.sh              mirakc 起動スクリプト（chroot + glibc ランタイム）
 │   ├── stop_android_tv.sh           Android TV 不要プロセス停止
 │   ├── crash_guard.sh               クラッシュ監視ウォッチドッグ
-│   ├── decoder.sh                   生TS/TLV を b21dec/b61dec で復号（ローカル/リモート）
+│   ├── decoder.sh                   生TS/TLV を b25dec/b61dec で復号（ローカル/リモート）
 │   ├── smb400_reboot.sh             デバイスごとリモート再起動（ホスト側）
 │   ├── write_usb_boot.sh            USBメモリへブートファイル3点を書き込む（要 sudo）
 │   ├── setup_proot.sh               Alpine rootfs + glibc-armhf 初回セットアップ
@@ -131,9 +131,9 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   └── strings.yml                  mirakc 日本語文字列定義
 └── src/                             バイナリの C ソースコード（make build-bins でビルド）
     ├── b61dec.c                     ACAS BS4K / BS8K デスクランブラー（ARIB STD-B61 / AES）
-    ├── b21dec.c                     地上波 / BS / CS MULTI2 デスクランブラー（ACAS 経由 / ARIB STD-B25）
+    ├── b25dec.c                     地上波 / BS / CS MULTI2 デスクランブラー（ACAS 経由 / ARIB STD-B25）
     ├── acas_proxy.c                  ACAS APDU プロキシ（SMB400 側、TCP 40773）
-    ├── acas_remote.c / acas_remote.h リモート ACAS クライアント（b61dec/b21dec 共用）
+    ├── acas_remote.c / acas_remote.h リモート ACAS クライアント（b61dec/b25dec 共用）
     ├── tuner-stream-ng.c            地上波（ISDB-T, MPEG-TS）チューナー
     ├── tuner-stream-bs-ng.c         BS4K / BS8K / BS / CS（ISDB-S/S3）チューナー
     ├── tuner-stream-bs.c            BS（ISDB-S, MPEG-TS）チューナー（mode=1）
@@ -301,9 +301,9 @@ adb -s <デバイスのIPアドレス>:5555 shell id
 
 ### Step 4: チューナーバイナリをビルドする
 
-`src/` の C ソースからチューナー/デコーダ/ACASプロキシバイナリ（`tuner-stream-ng` / `tuner-stream-bs-ng` / `b61dec` / `tuner-stream-bs` / `b21dec` / `acas_proxy`）をビルドします。
+`src/` の C ソースからチューナー/デコーダ/ACASプロキシバイナリ（`tuner-stream-ng` / `tuner-stream-bs-ng` / `b61dec` / `tuner-stream-bs` / `b25dec` / `acas_proxy`）をビルドします。
 リンクには実機の Android システムライブラリが必要なため、`make build-bins` が ADB 経由で自動取得します（デバイスが USB ブート中であること）。
-なおチューナーコマンドは生（スクランブル済み）ストリームを出力し、復号はデコーダ（`b21dec` / `b61dec`、ローカルまたはリモート）が行います（[リモートデコーダ / ACAS proxy](#リモートデコーダ--acas-proxy) 参照）。
+なおチューナーコマンドは生（スクランブル済み）ストリームを出力し、復号はデコーダ（`b25dec` / `b61dec`、ローカルまたはリモート）が行います（[リモートデコーダ / ACAS proxy](#リモートデコーダ--acas-proxy) 参照）。
 
 ```sh
 # 要件: sudo apt install gcc-arm-linux-gnueabi libc6-dev-armel-cross libssl-dev
@@ -423,7 +423,7 @@ make start ADB_TARGET=<デバイスのIPアドレス>:5555
 ### Step 10: ストリームを確認する
 
 チューナー出力は**生（スクランブル済み）**です。`make test` は生ストリームの先頭を表示します。
-復号確認は `decoder.sh` / `b61dec` / `b21dec` を通してください（[リモートデコーダ / ACAS proxy](#リモートデコーダ--acas-proxy) 参照）。
+復号確認は `decoder.sh` / `b61dec` / `b25dec` を通してください（[リモートデコーダ / ACAS proxy](#リモートデコーダ--acas-proxy) 参照）。
 
 **BS4K（生TLV）:**
 
@@ -455,7 +455,7 @@ curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/channels/
 make test-cs ADB_TARGET=<デバイスのIPアドレス>:5555
 ```
 
-- 先頭が `47`（TS 同期バイト）なら生TSを受信できています。復号は `decoder.sh CS2` / `b21dec`。
+- 先頭が `47`（TS 同期バイト）なら生TSを受信できています。復号は `decoder.sh CS2` / `b25dec`。
 
 ---
 
@@ -528,7 +528,7 @@ ffplay http://<デバイスのIPアドレス>:40772/api/channels/BS4K/45280/stre
 地上波デジタル（ISDB-T）にも対応しています。
 地デジも BS と同じ **MULTI2**（B-CAS 方式, CA_system_id 0x0005）でスクランブルされています。
 チューナー（`tuner-stream-ng`、DMX 直接キャプチャ）は**生の MPEG-TS** を出力し、
-`b21dec`（ローカル、またはリモートの `decoder.sh` + ACAS proxy）が ACAS チップ経由で解除します（B-CAS カード不要）。
+`b25dec`（ローカル、またはリモートの `decoder.sh` + ACAS proxy）が ACAS チップ経由で解除します（B-CAS カード不要）。
 mirakc の `service-filter` / `program-filter`（mirakc-arib）は復号後の TS を想定しているため、
 クライアント側で復号する場合はフィルタの適用順に注意してください。
 
@@ -563,7 +563,7 @@ ffprobe gr27.ts        # mpeg2video が見えれば復号成功
 
 NHK BS などの**BS（ISDB-S, MPEG-TS）**にも対応しています。
 2K BS は ARIB STD-B25 系の **MULTI2**（B-CAS 方式, CA_system_id 0x0005）でスクランブルされています。
-チューナーは**生の MPEG-TS**を出力し、`b21dec`（ローカル、またはリモートの `decoder.sh` + ACAS proxy）が
+チューナーは**生の MPEG-TS**を出力し、`b25dec`（ローカル、またはリモートの `decoder.sh` + ACAS proxy）が
 オンデバイスの **ACAS チップ**経由で解除します（B-CAS カード不要）。
 BS4K の `b61dec`（ACAS-RMP / AES）とは別系統で、ACAS チップの**従来 CAS 機能**（APDU を ACAS モード P2=0x02 で送出）を使い、ECM から MULTI2 スクランブル鍵を取得します。
 
@@ -576,9 +576,9 @@ BS4K の `b61dec`（ACAS-RMP / AES）とは別系統で、ACAS チップの**従
 | NHK BS (103) | BS | BS15_0 | 103 |
 
 - channel は `BSxx_y`（xx=トランスポンダ番号, y=ストリーム）形式で、`smb400-tuner.sh` が IF = `1049480 + (xx-1)/2 × 38360` kHz を算出して `tuner-stream-bs-ng`（mode=1）でロックします（旧 `tuner-stream-bs` バイナリは現在未使用・フォールバック保持）。
-- `b21dec` は **ACAS マスターキー不要**です（放送局のワークキー Kw は、過去の実放送受信時に EMM 経由でチップへ書き込まれた契約情報を利用するため）。
+- `b25dec` は **ACAS マスターキー不要**です（放送局のワークキー Kw は、過去の実放送受信時に EMM 経由でチップへ書き込まれた契約情報を利用するため）。
   逆に、当該局の契約・受信履歴が無いチップでは ECM 応答が「視聴不可」となり復号できません。
-- 出力は**生の MPEG-TS**です。復号は `b21dec` / `decoder.sh` で行います（mirakc の `service-filter` / `program-filter` は復号後を想定）。
+- 出力は**生の MPEG-TS**です。復号は `b25dec` / `decoder.sh` で行います（mirakc の `service-filter` / `program-filter` は復号後を想定）。
 - ストリーム確認・視聴（復号する場合）:
 
 ```sh
@@ -588,7 +588,7 @@ ffprobe nhkbs.ts          # mpeg2video 1440x1080 + aac が見えれば復号成�
 ffplay "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/stream"  # 生TSのため要デコーダ
 ```
 
-110 度 CS（ISDB-S 2K 相当）も BS と同じ経路（`tuner-stream-bs-ng` mode=1 → `b21dec`）で受信します。`config/config.yml` には .111 からインポートした CS チャンネル（CS2〜CS24, recpt1 互換、実測 services 付き）が含まれます（`make test-cs` が CS/CS2 を叩きます）。
+110 度 CS（ISDB-S 2K 相当）も BS と同じ経路（`tuner-stream-bs-ng` mode=1 → `b25dec`）で受信します。`config/config.yml` には .111 からインポートした CS チャンネル（CS2〜CS24, recpt1 互換、実測 services 付き）が含まれます（`make test-cs` が CS/CS2 を叩きます）。
 
 | name | type | channel |
 |------|------|---------|
@@ -602,7 +602,7 @@ ffplay "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/st
 SMB400 のチューナーコマンドは**生（スクランブル済み）**の MPEG-TS / TLV を出力します。
 復号は次のどちらかで行います。
 
-- ローカル: `b21dec` / `b61dec`（SMB400 上）
+- ローカル: `b25dec` / `b61dec`（SMB400 上）
 - リモート: 同じデコーダを `-acas <SMB400>:40773` で実行（`decoder.sh`）
 
 リモート側に TS がある場合、ネットワークを流れるのは ACAS の APDU のみで、TS 本体は流れません。
@@ -623,14 +623,14 @@ make start                 # start_mirakc.sh が acas_proxy も起動
 - チップ共有: `SCI_WRAPPER_InitForAllProcess` + `PIXELA_DeviceSharing` の CAS/CKC ロックを使用。
   プロキシが APDU を直列化するため、複数クライアント（複数チューナー）で共有できます。
 - A0（GetCkc）はプロキシ起動時に1回だけ実行し、`a0_cmd/a0_resp` をクライアントへ配布します。
-  **プロキシ使用中は SMB400 側のローカル `b61dec` / `b21dec` を同時に動かさないでください**
+  **プロキシ使用中は SMB400 側のローカル `b61dec` / `b25dec` を同時に動かさないでください**
   （別の A0 で KCL が入れ替わるため）。チューナーコマンドからデコーダを外した構成では問題ありません。
 
 ### 2. リモート: デコーダ
 
 ```sh
-# ホスト (Linux) でリモート用バイナリをビルド
-make build-decoders-remote    # bin/b61dec-remote, bin/b21dec-remote
+# x86_64 (Linux) でリモート用バイナリをビルド
+make build-decoders-remote    # bin/b61dec-remote, bin/b25dec-remote (x86_64)
 
 # 復号（BS4K/BS8K）
 cat scrambled.tlv | decoder.sh 45168 --acas 192.168.1.133:40773 > plain.tlv
@@ -638,10 +638,10 @@ cat scrambled.tlv | decoder.sh 45168 --acas 192.168.1.133:40773 > plain.tlv
 cat scrambled.ts  | decoder.sh BS15_0 --acas 192.168.1.133:40773 > plain.ts
 ```
 
-- `decoder.sh` はチャンネル形式で `b61dec` / `b21dec` を自動選択します。
+- `decoder.sh` はチャンネル形式で `b61dec` / `b25dec` を自動選択します。
 - BS4K は ACAS マスターキーが必要です（`ACAS_KEY` 環境変数、または `ACAS_KEY_FILE`）。
 - トークンを使う場合は `--acas-token <token>`（または `ACAS_TOKEN`）。
-- Windows は MinGW-w64 + OpenSSL で `b61dec.c` / `b21dec.c` / `acas_remote.c` をビルドできます。
+- Windows は MinGW-w64 + OpenSSL で `b61dec.c` / `b25dec.c` / `acas_remote.c` をビルドできます。
 
 ### 3. セキュリティ
 
@@ -775,7 +775,7 @@ make reboot ADB_TARGET=<デバイスのIPアドレス>:5555
 
 ```sh
 make build-bins          # チューナー/デコーダ/acas_proxy をビルド
-make build-decoders-remote  # リモート用 b61dec/b21dec をホスト向けにビルド
+make build-decoders-remote  # リモート用 b61dec/b25dec を x86_64 向けにビルド
 make build-mirakc-armv7  # mirakc 3バイナリ (mirakc-BS4K fork) をソースからビルド
 make build-webui         # mirakc WebUI (mirakc-webui) をソースからビルド
 make deploy-mirakc       # mirakc 本体・設定・Web UI をデプロイ
@@ -922,7 +922,7 @@ adb -s <デバイスのIPアドレス>:5555 shell "rm -f /data/local/tmp/.tuner_
 
 ### TVTest 等の外部クライアントで視聴できない（信号が流れてこない）
 
-`decoder.sh` / `b61dec` / `b21dec` で復号したストリームが正常なのに、TVTest 側で映像が出ない場合はクライアント側の BonDriver 設定を確認してください。
+`decoder.sh` / `b61dec` / `b25dec` で復号したストリームが正常なのに、TVTest 側で映像が出ない場合はクライアント側の BonDriver 設定を確認してください。
 
 - **mirakc 用の BonDriver を使う**: [stuayu/BonDriver_mirakc](https://github.com/stuayu/BonDriver_mirakc) を使い、mirakc の API（`http://<デバイスのIPアドレス>:40772`）へ接続します。Mirakurun 用 BonDriver は mirakc では動作しないことがあります。
 - **BS4K / BS8K は専用 BonDriver が必要**: mirakc は BS4K / BS8K を TLV のまま passthrough するため、dantto4k 等の ISDB-S3 対応 BonDriver を経由してください（例: `BonDriver_mirakc` → `BonDriver_dantto4k` の構成でリアルタイム視聴可）。

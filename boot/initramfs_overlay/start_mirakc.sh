@@ -25,7 +25,7 @@ $MIRAKC/strings.yml
 /data/local/tmp/smb400-tuner.sh
 /data/local/tmp/tuner-stream-ng
 /data/local/tmp/tuner-stream-bs-ng
-/data/local/tmp/b21dec
+/data/local/tmp/b25dec
 /data/local/tmp/b61dec
 "
 missing=""
@@ -68,7 +68,7 @@ pkill -f "tunertest_oem" 2>/dev/null || true
 pkill -f "tunertest" 2>/dev/null || true
 pkill -f "tuner-stream" 2>/dev/null || true
 pkill -f "b61dec" 2>/dev/null || true
-pkill -f "b21dec" 2>/dev/null || true
+pkill -f "b25dec" 2>/dev/null || true
 
 # --- ACAS APDU proxy (remote decoder support) ---
 # Exposes the on-device ACAS chip over TCP (default 40773).  Only starts if

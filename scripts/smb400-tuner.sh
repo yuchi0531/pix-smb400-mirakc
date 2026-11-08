@@ -11,9 +11,9 @@
 #   BS4K: integer ≥40000   → tuner-stream-bs-ng (raw TLV, ISDB-S3)
 #
 # Decoding is NOT done here.  This script only tunes and emits the raw
-# (scrambled) MPEG-TS / TLV.  The decoder (b21dec / b61dec, locally or on a
+# (scrambled) MPEG-TS / TLV.  The decoder (b25dec / b61dec, locally or on a
 # remote host via decoder.sh) and the ACAS proxy handle ECM/Ks/AES.
-#   - GR / BS / CS(2K): MULTI2 (ARIB STD-B25)  → b21dec
+#   - GR / BS / CS(2K): MULTI2 (ARIB STD-B25)  → b25dec
 #   - BS4K / BS8K:      ACAS-RMP (ARIB STD-B61) → b61dec
 #
 # tuner-stream-* run via chroot /proc/1/root to access the Android linker
@@ -60,7 +60,7 @@ case "$CHANNEL" in
             exit 1
         fi
         # 2K BS is MULTI2-scrambled (NHK / 有料局). The raw TS is left scrambled
-        # here; b21dec (= the B25 decoder) decrypts it locally or remotely.
+        # here; b25dec (= the B25 decoder) decrypts it locally or remotely.
         # NOTE: 2K BS (mode=1) も tuner-stream-bs-ng (pipe + 64-bit limit) を使用。
         # 旧 tuner-stream-bs (mkfifo + 2GB limit + 18分毎再起動) は不使用。
         chroot /proc/1/root /system/bin/sh -c \
@@ -80,7 +80,7 @@ case "$CHANNEL" in
         # (n=偶数トランスポンダ番号 2-24)。後方互換のため旧 NDxx も受理する。
         # IF = 1613000 + (n-2)/2 * 40000 kHz。1トランスポンダ=単一TSで
         # 複数サービスが通常のMPTSとして多重されているため、BSのようなTSID対応表は不要。
-        # streamId=0(auto)で受かる。生TSを出力し、b21dec が復号する。
+        # streamId=0(auto)で受かる。生TSを出力し、b25dec が復号する。
         case "$CHANNEL" in
             CS*) NSTR=${CHANNEL#CS} ;;
             ND*) NSTR=${CHANNEL#ND} ;;
@@ -134,7 +134,7 @@ case "$CHANNEL" in
     [0-9]*)
         # GR (ISDB-T 地上波): 物理チャンネル 13-62。ifKHz = 473143 + (ch-13)*6000。
         IF_KHZ=$((473143 + (CHANNEL - 13) * 6000))
-        # 生TSを出力し、b21dec が MULTI2 (B-CAS, CA_system_id 0x0005) を復号する。
+        # 生TSを出力し、b25dec が MULTI2 (B-CAS, CA_system_id 0x0005) を復号する。
         # tuner-stream-ng は libhi_msp(DMX) を dlopen し tunertest_oem を fork するため、
         # Android linker/vendor lib を要する → chroot /proc/1/root 配下で実行。
         # ※ 地デジのワークキー Kw はチップが地上波 EMM 受信時に取得する。地上波を

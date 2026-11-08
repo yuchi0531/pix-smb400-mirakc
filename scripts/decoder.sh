@@ -9,7 +9,7 @@
 #
 # Dispatch:
 #   BS4K / BS8K (5-digit channel) -> b61dec  (ACAS B61, AES-128-CTR)
-#   everything else               -> b21dec  (B-CAS / MULTI2, ARIB STD-B25)
+#   everything else               -> b25dec  (B-CAS / MULTI2, ARIB STD-B25)
 #
 # Environment:
 #   BINDIR          directory containing the decoder binaries
@@ -95,7 +95,7 @@ case "$CHANNEL" in
         ;;
     *)
         # GR / BS / CS (2K): B-CAS / MULTI2 (ARIB STD-B25)
-        BIN=$(pick_bin b21dec)
+        BIN=$(pick_bin b25dec)
         set --
         [ -n "$ACAS" ]  && set -- "$@" -acas "$ACAS"
         [ -n "$TOKEN" ] && set -- "$@" -acas-token "$TOKEN"

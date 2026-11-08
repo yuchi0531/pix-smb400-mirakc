@@ -7,7 +7,7 @@
 #   CS   = NDxx  (xx=偶数トランスポンダ番号)
 #   BS4K = 5桁 StreamID (45168 など。BS8K の 45280 も同じ経路)
 # 復号はすべて smb400-tuner.sh 内で完了する:
-#   GR / BS / CS(2K) は b21dec (MULTI2 / ACAS 従来CAS) で平文 MPEG-TS を出力。
+#   GR / BS / CS(2K) は b25dec (MULTI2 / ACAS 従来CAS) で平文 MPEG-TS を出力。
 #   BS4K / BS8K は b61dec (ISDB-S3 / AES) で復号済み TLV を出力し、mirakc は
 #   これを passthrough する。
 #
@@ -326,7 +326,7 @@ tuners:
   # channel 値(GR=物理ch, BS=BSxx_y, CS=CSn/NDxx, BS4K=5桁StreamID)は
   # smb400-tuner.sh が解釈する。
   # チューナーコマンドは「生（スクランブル済み）」の MPEG-TS / TLV を出力する。
-  # 復号はデコーダ側（b21dec / b61dec、ローカルまたはリモートの decoder.sh）が
+  # 復号はデコーダ側（b25dec / b61dec、ローカルまたはリモートの decoder.sh）が
   # ACAS チップ（必要なら acas_proxy 経由）を使って行う。
   # BS4K は mirakc 側で passthrough される（tlvDecoder / decode-filter は不要）。
   - name: SMB400

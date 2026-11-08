@@ -2,7 +2,7 @@
  * acas_proxy.c — SMB400 ACAS APDU proxy.
  *
  * Owns the on-device ACAS chip through libstationtv_lt_px_stream.so and
- * exposes the SCI APDU interface over TCP so b61dec / b21dec can run on
+ * exposes the SCI APDU interface over TCP so b61dec / b25dec can run on
  * another host (the "remote decoder").
  *
  * The chip is shared with other processes through the library's
@@ -20,7 +20,7 @@
  * Notes:
  *   - Run as root (ADB shell on SMB400 is root).
  *   - Stop pix_airtuner first (start_mirakc.sh / stop_android_tv.sh does).
- *   - Only one A0 session is kept.  Do not run local b61dec/b21dec A0
+ *   - Only one A0 session is kept.  Do not run local b61dec/b25dec A0
  *     initiators at the same time; after the tuner-script split the proxy is
  *     the only ACAS A0 user.
  */
@@ -316,7 +316,7 @@ static void usage(const char *prog) {
         "  -t token  shared secret required from clients (optional)\n"
         "  -v        verbose\n\n"
         "Exposes the on-device ACAS chip (SCI APDU) over TCP for remote\n"
-        "b61dec / b21dec.  Run as root; stop pix_airtuner first.\n",
+        "b61dec / b25dec.  Run as root; stop pix_airtuner first.\n",
         prog, ACAS_REMOTE_DEFAULT_PORT);
 }
 

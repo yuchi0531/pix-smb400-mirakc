@@ -5,7 +5,7 @@
  * acas_remote.h — client for the SMB400 ACAS APDU proxy.
  *
  * The proxy (src/acas_proxy.c) owns the on-device ACAS chip and exposes the
- * SCI APDU interface over TCP.  b61dec / b21dec can run on another host and
+ * SCI APDU interface over TCP.  b61dec / b25dec can run on another host and
  * use this client instead of dlopen()ing libstationtv_lt_px_stream.so.
  *
  * Wire protocol (big-endian u16 lengths):
