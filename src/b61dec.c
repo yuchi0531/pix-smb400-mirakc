@@ -54,6 +54,19 @@
 #include <openssl/sha.h>
 #include <openssl/aes.h>
 
+/* The glibc headers used for the Android cross build expand isspace()/isxdigit()
+ * into __ctype_b_loc(), which bionic libc does not export.  Use explicit ASCII
+ * checks instead so the binaries link against bionic only. */
+static int is_space_ascii(unsigned char c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
+}
+
+static int is_hex_digit(unsigned char c) {
+    return (c >= '0' && c <= '9') ||
+           (c >= 'a' && c <= 'f') ||
+           (c >= 'A' && c <= 'F');
+}
+
 /* ===================================================================
  * Global statistics (printed to stderr on exit by print_stats())
  * =================================================================== */
@@ -609,11 +622,11 @@ static int load_key_beside_exe(const char *argv0, uint8_t key[32]) {
     buf[len] = '\0';
 
     char *p = buf;
-    while (*p && isspace((unsigned char)*p)) p++;
+    while (*p && is_space_ascii((unsigned char)*p)) p++;
     char hex[65];
     int i;
     for (i = 0; i < 64; i++) {
-        if (!isxdigit((unsigned char)p[i])) break;
+        if (!is_hex_digit((unsigned char)p[i])) break;
         hex[i] = p[i];
     }
     if (i != 64) return -1;

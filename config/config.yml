@@ -335,6 +335,8 @@ tuners:
     time-limit: 30000
 
 filters:
+  tuner-filter:
+    command: 'sh -c ''case {{{channel_type}}} in BS4K) exec /data/local/tmp/b61dec -key "$(cat /data/local/tmp/.acas_key)" -acas 127.0.0.1:40773 ;; *) exec /data/local/tmp/b25dec -acas 127.0.0.1:40773 ;; esac'''
   # チューナーは生ストリームを出力し、復号はデコーダ側で行うため
   # decode-filter は空のまま（tuner-filter もデフォルトの空のまま）。
   service-filter:
