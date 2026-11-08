@@ -117,7 +117,9 @@ build-bins: android-libs
 	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so $(ANDROID_LIBS)/ld-android.so \
 	    -o bin/tuner-stream-bs
 	@echo "[*] Building b25dec (従来2K BS MULTI2 descrambler)..."
-	$(CC_ARM) $(CFLAGS_ARM) -O2 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -Wl,--no-as-needed \
+	# -std=gnu17: GCC 15 defaults to gnu23; glibc headers then emit
+	# __isoc23_strtol, which bionic libc does not provide.
+	$(CC_ARM) $(CFLAGS_ARM) -O2 -std=gnu17 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -Wl,--no-as-needed \
 	    src/startup.c src/b25dec.c bin/acas_remote.o \
 	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so $(ANDROID_LIBS)/ld-android.so \
 	    -o bin/b25dec
