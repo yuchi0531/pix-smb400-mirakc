@@ -32,10 +32,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <dlfcn.h>
+#include "acas_remote.h"
 
+#if defined(ACAS_ANDROID)
 extern int *__errno(void);
 #undef  errno
 #define errno (*__errno())
+#else
+#include <errno.h>
+#endif
 extern char *strerror(int errnum);
 
 /* ===================================================================
@@ -167,6 +172,9 @@ static void m2_decrypt(M2 *m, int type, uint8_t *buf, int size) {
  * Conventional / B-CAS command set, ACAS mode (P2 = 0x02).
  * =================================================================== */
 static void *g_lib;
+static int  g_remote;
+static char g_remote_spec[128];
+static char g_remote_token[128];
 typedef int (*fn0)(void);
 typedef int (*set_fn)(uint8_t *, int, uint8_t *, int *);
 typedef int (*get_fn)(uint8_t *, int *);
@@ -175,6 +183,7 @@ static set_fn sw_SetData;
 static get_fn sw_GetData, sw_GetAtr;
 
 static int sci_load(void) {
+    if (g_remote) return 0;
     g_lib = dlopen("/vendor/lib/libstationtv_lt_px_stream.so", RTLD_NOW);
     if (!g_lib) { fprintf(stderr, "b21dec: dlopen: %s\n", dlerror()); return -1; }
 #define LD(v,s) v = dlsym(g_lib,s); if(!v){fprintf(stderr,"b21dec: dlsym %s: %s\n",s,dlerror());return -1;}
@@ -189,6 +198,9 @@ static int sci_load(void) {
 }
 
 static int acas_exchange(const uint8_t *cmd, int clen, uint8_t *resp, int *rlen) {
+    if (g_remote) {
+        return acas_remote_exchange(cmd, clen, resp, 256, rlen);
+    }
     uint8_t dummy[4]; int dl = 0;
     int r = sw_SetData((uint8_t *)cmd, clen, dummy, &dl);
     if (r != 0) { fprintf(stderr, "b21dec: SetData err=%d\n", r); return -1; }
@@ -466,18 +478,38 @@ static void print_stats(void) {
 
 int main(int argc, char **argv) {
     int verbose = 0;
-    for (int i = 1; i < argc; i++)
-        if (!strcmp(argv[i], "-v")) verbose = 1;
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "-v")) {
+            verbose = 1;
+        } else if (!strcmp(argv[i], "-acas") && i + 1 < argc) {
+            snprintf(g_remote_spec, sizeof(g_remote_spec), "%s", argv[++i]);
+            g_remote = 1;
+        } else if (!strcmp(argv[i], "-acas-token") && i + 1 < argc) {
+            snprintf(g_remote_token, sizeof(g_remote_token), "%s", argv[++i]);
+        } else {
+            fprintf(stderr, "Usage: %s [-acas host:port] [-acas-token token] [-v]\n",
+                    argv[0]);
+            return 1;
+        }
+    }
 
     signal(SIGTERM, on_sig); signal(SIGINT, on_sig); signal(SIGPIPE, on_sig);
 
     for (int i = 0; i < NPID; i++) g_pid_ecm[i] = -1;
 
-    if (sci_load() < 0) return 1;
     int r;
-    if ((r = sw_InitAll()) != 0) { fprintf(stderr, "b21dec: InitForAllProcess=%d\n", r); return 1; }
-    if ((r = sw_ResetF())  != 0) { fprintf(stderr, "b21dec: ResetForced=%d\n", r); return 1; }
-    if ((r = sw_WaitAct()) != 0) { fprintf(stderr, "b21dec: WaitForActivation=%d\n", r); return 1; }
+    if (g_remote) {
+        if (acas_remote_connect(g_remote_spec, g_remote_token) < 0) {
+            fprintf(stderr, "b21dec: cannot connect to ACAS proxy %s\n", g_remote_spec);
+            return 1;
+        }
+        fprintf(stderr, "b21dec: remote ACAS connected (%s)\n", g_remote_spec);
+    } else {
+        if (sci_load() < 0) return 1;
+        if ((r = sw_InitAll()) != 0) { fprintf(stderr, "b21dec: InitForAllProcess=%d\n", r); return 1; }
+        if ((r = sw_ResetF())  != 0) { fprintf(stderr, "b21dec: ResetForced=%d\n", r); return 1; }
+        if ((r = sw_WaitAct()) != 0) { fprintf(stderr, "b21dec: WaitForActivation=%d\n", r); return 1; }
+    }
 
     M2 cardm = {0}; cardm.round = 4;
     if (acas_bcas_init(&cardm) < 0) return 1;
@@ -542,5 +574,6 @@ int main(int argc, char **argv) {
     if (g_pend_n > 0) flush_pending();   /* EOF while still holding */
 
     if (verbose) print_stats();
+    if (g_remote) acas_remote_close();
     return 0;
 }

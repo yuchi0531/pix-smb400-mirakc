@@ -5,20 +5,19 @@
 #   smb400-tuner.sh <channel>
 #
 # Channel format determines operating mode:
-#   GR:   integer 13-62    → tuner-stream-ng  (MPEG-TS, ISDB-T)
-#   BS:   BSxx_y           → tuner-stream-bs-ng (MPEG-TS, ISDB-S)
-#   CS:   NDxx             → tuner-stream-bs-ng | b21dec (MPEG-TS, 110度CS)
-#   BS4K: integer ≥40000   → tuner-stream-bs-ng | b61dec (descrambled TLV, ISDB-S3)
+#   GR:   integer 13-62    → tuner-stream-ng  (raw MPEG-TS, ISDB-T)
+#   BS:   BSxx_y           → tuner-stream-bs-ng (raw MPEG-TS, ISDB-S)
+#   CS:   CSn / NDxx       → tuner-stream-bs-ng (raw MPEG-TS, 110度CS)
+#   BS4K: integer ≥40000   → tuner-stream-bs-ng (raw TLV, ISDB-S3)
 #
-# BS4K descrambling note:
-#   Scrambled TLV would be unreadable downstream, so we descramble it here,
-#   inside the tuner command, before output.  mirakc handles BS4K as TLV
-#   passthrough (no decode-filter required).
-#   b61dec and tuner-stream-bs-ng run via chroot /proc/1/root to access the
-#   Android linker paths required by libstationtv_*/libhi_msp.
+# Decoding is NOT done here.  This script only tunes and emits the raw
+# (scrambled) MPEG-TS / TLV.  The decoder (b21dec / b61dec, locally or on a
+# remote host via decoder.sh) and the ACAS proxy handle ECM/Ks/AES.
+#   - GR / BS / CS(2K): MULTI2 (ARIB STD-B25)  → b21dec
+#   - BS4K / BS8K:      ACAS-RMP (ARIB STD-B61) → b61dec
 #
-# ACAS key (BS4K only): device-specific, never committed to git.
-#   echo '<64-hex>' > /data/local/tmp/.acas_key ; chmod 600 /data/local/tmp/.acas_key
+# tuner-stream-* run via chroot /proc/1/root to access the Android linker
+# paths required by libhi_msp.
 
 CHANNEL=$1
 if [ -z "$CHANNEL" ]; then
@@ -60,22 +59,17 @@ case "$CHANNEL" in
             echo "smb400-tuner.sh: unknown BS channel '$CHANNEL' (not in TSID table)" >&2
             exit 1
         fi
-        # 2K BS is MULTI2-scrambled (NHK / 有料局). Descramble in-command via the
-        # ACAS chip (conventional/B-CAS CAS, APDU P2=0x02) so mirakc's TS filter
-        # receives plain MPEG-TS.  b21dec needs the Android linker/vendor libs, so
-        # the pipe runs under chroot /proc/1/root (same as the BS4K path).  No key
-        # arg: the chip holds the broadcaster work key (Kw) from prior live EMM.
+        # 2K BS is MULTI2-scrambled (NHK / 有料局). The raw TS is left scrambled
+        # here; b21dec (= the B25 decoder) decrypts it locally or remotely.
         # NOTE: 2K BS (mode=1) も tuner-stream-bs-ng (pipe + 64-bit limit) を使用。
         # 旧 tuner-stream-bs (mkfifo + 2GB limit + 18分毎再起動) は不使用。
         chroot /proc/1/root /system/bin/sh -c \
-            "$BINDIR/tuner-stream-bs-ng 0 1 $IF_KHZ $TSID | $BINDIR/b21dec" &
+            "$BINDIR/tuner-stream-bs-ng 0 1 $IF_KHZ $TSID" &
         CHROOT_PID=$!
         trap "pkill -f 'tuner-stream-bs-ng 0 1 $IF_KHZ' 2>/dev/null; \
-              pkill -f b21dec 2>/dev/null; \
               sleep 1; \
               kill -9 $CHROOT_PID 2>/dev/null; \
               pkill -9 -f 'tuner-stream-bs-ng 0 1 $IF_KHZ' 2>/dev/null; \
-              pkill -9 -f b21dec 2>/dev/null; \
               pkill -9 tunertest 2>/dev/null; exit 0" TERM INT
         wait $CHROOT_PID
         pkill -9 -f "tuner-stream-bs-ng 0 1 $IF_KHZ" 2>/dev/null || true
@@ -86,7 +80,7 @@ case "$CHANNEL" in
         # (n=偶数トランスポンダ番号 2-24)。後方互換のため旧 NDxx も受理する。
         # IF = 1613000 + (n-2)/2 * 40000 kHz。1トランスポンダ=単一TSで
         # 複数サービスが通常のMPTSとして多重されているため、BSのようなTSID対応表は不要。
-        # streamId=0(auto)で受かる。BS(2K)と同じ b21dec 経路で復号。
+        # streamId=0(auto)で受かる。生TSを出力し、b21dec が復号する。
         case "$CHANNEL" in
             CS*) NSTR=${CHANNEL#CS} ;;
             ND*) NSTR=${CHANNEL#ND} ;;
@@ -102,14 +96,12 @@ case "$CHANNEL" in
         ND=$((10#$NSTR)) # strip leading zero, force base10
         IF_KHZ=$((1613000 + (ND - 2) / 2 * 40000))
         chroot /proc/1/root /system/bin/sh -c \
-            "$BINDIR/tuner-stream-bs-ng 0 1 $IF_KHZ 0 | $BINDIR/b21dec" &
+            "$BINDIR/tuner-stream-bs-ng 0 1 $IF_KHZ 0" &
         CHROOT_PID=$!
         trap "pkill -f 'tuner-stream-bs-ng 0 1 $IF_KHZ' 2>/dev/null; \
-              pkill -f b21dec 2>/dev/null; \
               sleep 1; \
               kill -9 $CHROOT_PID 2>/dev/null; \
               pkill -9 -f 'tuner-stream-bs-ng 0 1 $IF_KHZ' 2>/dev/null; \
-              pkill -9 -f b21dec 2>/dev/null; \
               pkill -9 tunertest 2>/dev/null; exit 0" TERM INT
         wait $CHROOT_PID
         pkill -9 -f "tuner-stream-bs-ng 0 1 $IF_KHZ" 2>/dev/null || true
@@ -117,11 +109,6 @@ case "$CHANNEL" in
         ;;
     4[0-9][0-9][0-9][0-9])
         # BS4K (ISDB-S3): 5-digit stream ID — static IF frequency lookup
-        ACAS_KEY=$(cat /data/local/tmp/.acas_key 2>/dev/null | tr -d '[:space:]')
-        if [ -z "$ACAS_KEY" ] || [ "${#ACAS_KEY}" -ne 64 ]; then
-            echo "smb400-tuner.sh: ACAS key missing or invalid at /data/local/tmp/.acas_key" >&2
-            exit 1
-        fi
         case "$CHANNEL" in
             45168|45169|45170) IF_KHZ=1164560 ;;  # BS7  transponder (右旋)
             45232|45234)       IF_KHZ=1241280 ;;  # BS11 transponder (右旋)
@@ -129,17 +116,15 @@ case "$CHANNEL" in
             45280)             IF_KHZ=2472000 ;;  # BS8K (NHK BS8K, 左旋 11.97682GHz / IF 2472MHz, serviceId 102)
             *) echo "smb400-tuner.sh: unknown BS4K channel '$CHANNEL'" >&2; exit 1 ;;
         esac
-        # Pipeline runs in host Android context (chroot to host root) so Android
-        # shared libs are accessible.  Run in background so trap fires on SIGTERM.
+        # Raw (scrambled) TLV passthrough.  b61dec (local or remote via
+        # decoder.sh + ACAS proxy) performs ECM/AES-128-CTR descrambling.
         chroot /proc/1/root /system/bin/sh -c \
-            "$BINDIR/tuner-stream-bs-ng 0 2 $IF_KHZ $CHANNEL | $BINDIR/b61dec -key $ACAS_KEY" &
+            "$BINDIR/tuner-stream-bs-ng 0 2 $IF_KHZ $CHANNEL" &
         CHROOT_PID=$!
         trap "pkill -f 'tuner-stream-bs-ng 0 2 $IF_KHZ' 2>/dev/null; \
-              pkill -f 'b61dec -key $ACAS_KEY' 2>/dev/null; \
               sleep 1; \
               kill -9 $CHROOT_PID 2>/dev/null; \
               pkill -9 -f 'tuner-stream-bs-ng 0 2 $IF_KHZ' 2>/dev/null; \
-              pkill -9 -f 'b61dec -key $ACAS_KEY' 2>/dev/null; \
               pkill -9 tunertest 2>/dev/null; exit 0" TERM INT
         wait $CHROOT_PID
         # tuner-stream-bs-ng spawns tunertest as a child but does not kill it on exit
@@ -149,23 +134,20 @@ case "$CHANNEL" in
     [0-9]*)
         # GR (ISDB-T 地上波): 物理チャンネル 13-62。ifKHz = 473143 + (ch-13)*6000。
         IF_KHZ=$((473143 + (CHANNEL - 13) * 6000))
-        # 地デジも MULTI2(B-CAS, CA_system_id 0x0005) スクランブルのため、2K BS と
-        # 同じく b21dec で in-command 復号する。tuner-stream-ng は libhi_msp(DMX) を
-        # dlopen し tunertest_oem を fork するため、b21dec ともども Android linker/
-        # vendor lib を要する → chroot /proc/1/root 配下で実行 (BS4K 経路と同じ)。
+        # 生TSを出力し、b21dec が MULTI2 (B-CAS, CA_system_id 0x0005) を復号する。
+        # tuner-stream-ng は libhi_msp(DMX) を dlopen し tunertest_oem を fork するため、
+        # Android linker/vendor lib を要する → chroot /proc/1/root 配下で実行。
         # ※ 地デジのワークキー Kw はチップが地上波 EMM 受信時に取得する。地上波を
         #   一度も受信していないチップでは ECM が視聴不可(rc≠0x0800)になり得る。
         chroot /proc/1/root /system/bin/sh -c \
-            "$BINDIR/tuner-stream-ng 0 0 32 $IF_KHZ 6000 | $BINDIR/b21dec" &
+            "$BINDIR/tuner-stream-ng 0 0 32 $IF_KHZ 6000" &
         CHROOT_PID=$!
         # SIGTERM first so tuner-stream-ng can call dmx_deinit() — SIGKILL skips it and
         # leaves a stale DMX channel that blocks the next run.
         trap "pkill -f 'tuner-stream-ng 0 0 32 $IF_KHZ' 2>/dev/null; \
-              pkill -f b21dec 2>/dev/null; \
               sleep 1; \
               kill -9 $CHROOT_PID 2>/dev/null; \
               pkill -9 -f 'tuner-stream-ng 0 0 32 $IF_KHZ' 2>/dev/null; \
-              pkill -9 -f b21dec 2>/dev/null; \
               pkill -9 tunertest 2>/dev/null; exit 0" TERM INT
         wait $CHROOT_PID
         pkill -9 -f "tuner-stream-ng 0 0 32 $IF_KHZ" 2>/dev/null || true

@@ -323,19 +323,20 @@ channels:
 
 tuners:
   # 1台の物理チューナーが GR / BS / CS / BS4K を兼用する。
-  # channel 値(GR=物理ch, BS=BSxx_y, CS=NDxx, BS4K=5桁StreamID)は
+  # channel 値(GR=物理ch, BS=BSxx_y, CS=CSn/NDxx, BS4K=5桁StreamID)は
   # smb400-tuner.sh が解釈する。
-  # GR / BS(2K) / CS は復号済み MPEG-TS、BS4K / BS8K は復号済み TLV を出力する。
-  # BS4K は mirakc 側で passthrough されるため、tlvDecoder / decode-filter は
-  # 不要（下流にスクランブル済みデータを渡すこともない）。
+  # チューナーコマンドは「生（スクランブル済み）」の MPEG-TS / TLV を出力する。
+  # 復号はデコーダ側（b21dec / b61dec、ローカルまたはリモートの decoder.sh）が
+  # ACAS チップ（必要なら acas_proxy 経由）を使って行う。
+  # BS4K は mirakc 側で passthrough される（tlvDecoder / decode-filter は不要）。
   - name: SMB400
     types: [GR, BS, CS, BS4K]
     command: /data/local/tmp/smb400-tuner.sh {{{channel}}}
     time-limit: 30000
 
 filters:
-  # 復号はチューナーコマンド内で完了しているため decode-filter は空のまま
-  # （tuner-filter もデフォルトの空のまま）。
+  # チューナーは生ストリームを出力し、復号はデコーダ側で行うため
+  # decode-filter は空のまま（tuner-filter もデフォルトの空のまま）。
   service-filter:
     command: '/data/local/tmp/mirakc/bin/mirakc-arib filter-service --sid={{{sid}}}'
   program-filter:

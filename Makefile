@@ -24,9 +24,9 @@
 # ---------- 変更可能な設定 ----------
 # ADB_TARGET 未指定時は adb devices から自動検出
 # 複数台接続時は明示指定: make <target> ADB_TARGET=192.168.1.126:5555
-# ADB を使わないターゲット (help, build-mirakc-armv7, build-webui) は ADB なしでも実行できる。
+# ADB を使わないターゲット (help, build-decoders-remote, build-mirakc-armv7, build-webui) は ADB なしでも実行できる。
 ifndef ADB_TARGET
-  ifeq ($(filter help build-mirakc-armv7 build-webui,$(MAKECMDGOALS)),)
+  ifeq ($(filter help build-decoders-remote build-mirakc-armv7 build-webui,$(MAKECMDGOALS)),)
     _DETECTED := $(shell adb devices 2>/dev/null | awk '/\tdevice$$/{print $$1}')
     ifeq ($(words $(_DETECTED)),0)
       $(error No ADB device connected. Run: adb connect <ip>:<port>)
@@ -58,12 +58,13 @@ ANDROID_LIBS := android-libs
 # libc.so は 32-bit time_t のシンボル (gettimeofday 等) しか持たないため明示的に 32-bit へ。
 CFLAGS_ARM   := -march=armv7-a -mfloat-abi=softfp -mfpu=vfpv3 \
                 -pie -fPIE -fno-stack-protector -nostartfiles \
+                -DACAS_ANDROID \
                 -D_TIME_BITS=32 -D_FILE_OFFSET_BITS=32 \
                 -Wl,-dynamic-linker,/system/bin/linker \
                 -L$(ANDROID_LIBS) -Wl,-rpath-link,$(ANDROID_LIBS)
 # ------------------------------------
 
-.PHONY: build-bins build-mirakc-armv7 build-webui android-libs \
+.PHONY: build-bins build-decoders-remote build-mirakc-armv7 build-webui android-libs \
         check-tuner-bins push-all push-bins push-scripts push-config push-webui \
         deploy-mirakc setup-runtime \
         start stop restart remote-reboot reboot log test test-cs help
@@ -81,11 +82,14 @@ android-libs:
 	    fi; \
 	done
 
-# src/ から bin/ のバイナリ（tuner-stream-ng, tuner-stream-bs-ng, b61dec, tuner-stream-bs, b21dec）をビルド
+# src/ から bin/ のバイナリ（tuner-stream-ng, tuner-stream-bs-ng, b61dec,
+# tuner-stream-bs, b21dec, acas_proxy）をビルド
 # mirakc 本体 (mirakc / mirakc-arib / mirakc-arib-tlv) はここではビルドしない:
 # ソースからクロスビルドする（build-mirakc-armv7）。
 build-bins: android-libs
 	@mkdir -p bin
+	@echo "[*] Building acas_remote.o (shared remote-ACAS client)..."
+	$(CC_ARM) $(CFLAGS_ARM) -c src/acas_remote.c -o bin/acas_remote.o
 	@echo "[*] Building tuner-stream-ng (GR/ISDB-T)..."
 	$(CC_ARM) $(CFLAGS_ARM) \
 	    src/startup.c src/tuner-stream-ng.c \
@@ -99,7 +103,7 @@ build-bins: android-libs
 	@echo "[*] Building b61dec..."
 	$(CC_ARM) $(CFLAGS_ARM) -Wl,--no-as-needed \
 	    -isystem /usr/include -isystem include \
-	    src/startup.c src/b61dec.c \
+	    src/startup.c src/b61dec.c bin/acas_remote.o \
 	    $(ANDROID_LIBS)/libssl.so $(ANDROID_LIBS)/libcrypto.so \
 	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so \
 	    $(ANDROID_LIBS)/libm.so $(ANDROID_LIBS)/ld-android.so \
@@ -111,10 +115,28 @@ build-bins: android-libs
 	    -o bin/tuner-stream-bs
 	@echo "[*] Building b21dec (従来2K BS MULTI2 descrambler)..."
 	$(CC_ARM) $(CFLAGS_ARM) -O2 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -Wl,--no-as-needed \
-	    src/startup.c src/b21dec.c \
+	    src/startup.c src/b21dec.c bin/acas_remote.o \
 	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so $(ANDROID_LIBS)/ld-android.so \
 	    -o bin/b21dec
-	@echo "[+] Built bin/tuner-stream-ng, tuner-stream-bs-ng, b61dec, tuner-stream-bs, b21dec"
+	@echo "[*] Building acas_proxy (remote decoder ACAS bridge)..."
+	$(CC_ARM) $(CFLAGS_ARM) -O2 \
+	    src/startup.c src/acas_proxy.c \
+	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so $(ANDROID_LIBS)/ld-android.so \
+	    -o bin/acas_proxy
+	@echo "[+] Built bin/tuner-stream-ng, tuner-stream-bs-ng, b61dec, tuner-stream-bs, b21dec, acas_proxy"
+
+# リモートデコーダ用: b61dec / b21dec をホスト (Linux) 向けにビルドする。
+# ACAS は SMB400 の acas_proxy を -acas host:port で使う（ローカルACAS不要）。
+# Windows は MinGW-w64 + OpenSSL で同様にビルドできる（README 参照）。
+build-decoders-remote:
+	@mkdir -p bin
+	@echo "[*] Building b61dec-remote (host OpenSSL)..."
+	gcc -std=gnu99 -O2 -Isrc -o bin/b61dec-remote \
+	    src/b61dec.c src/acas_remote.c -lcrypto -ldl -pthread
+	@echo "[*] Building b21dec-remote..."
+	gcc -std=gnu99 -O2 -Isrc -o bin/b21dec-remote \
+	    src/b21dec.c src/acas_remote.c -ldl -pthread
+	@echo "[+] Built bin/b61dec-remote, bin/b21dec-remote"
 
 # mirakc / mirakc-arib / mirakc-arib-tlv (yuchi0531/mirakc-BS4K fork) を
 # ARMv7 (glibc) 向けにソースからクロスビルドする。
@@ -135,7 +157,7 @@ build-webui:
 # 初回は bin/ が未生成のため、先に存在チェックして案内を出す
 # （make build-bins がクロスツールチェーンで生成する）。
 check-tuner-bins:
-	@missing=""; for f in bin/tuner-stream-ng bin/tuner-stream-bs-ng bin/b61dec bin/tuner-stream-bs bin/b21dec; do \
+	@missing=""; for f in bin/tuner-stream-ng bin/tuner-stream-bs-ng bin/b61dec bin/tuner-stream-bs bin/b21dec bin/acas_proxy; do \
 	    [ -f "$$f" ] || missing="$$missing $$f"; \
 	done; \
 	if [ -n "$$missing" ]; then \
@@ -154,6 +176,7 @@ push-bins: check-tuner-bins build-mirakc-armv7
 	$(ADB) push bin/b61dec             $(DEVICE_TMP)/b61dec
 	$(ADB) push bin/tuner-stream-bs    $(DEVICE_TMP)/tuner-stream-bs
 	$(ADB) push bin/b21dec             $(DEVICE_TMP)/b21dec
+	$(ADB) push bin/acas_proxy         $(DEVICE_TMP)/acas_proxy
 	@echo "[*] Pushing mirakc binaries..."
 	$(ADB) shell mkdir -p $(MIRAKC_DIR)/bin
 	$(ADB) push $(MIRAKC_ARM_DIR)/mirakc          $(MIRAKC_DIR)/bin/mirakc
@@ -165,6 +188,7 @@ push-bins: check-tuner-bins build-mirakc-armv7
 	    $(DEVICE_TMP)/b61dec \
 	    $(DEVICE_TMP)/tuner-stream-bs \
 	    $(DEVICE_TMP)/b21dec \
+	    $(DEVICE_TMP)/acas_proxy \
 	    $(MIRAKC_DIR)/bin/mirakc \
 	    $(MIRAKC_DIR)/bin/mirakc-arib \
 	    $(MIRAKC_DIR)/bin/mirakc-arib-tlv
@@ -175,11 +199,13 @@ push-scripts:
 	$(ADB) push scripts/start_mirakc.sh    $(DEVICE_TMP)/start_mirakc.sh
 	$(ADB) push scripts/stop_android_tv.sh $(DEVICE_TMP)/stop_android_tv.sh
 	$(ADB) push scripts/crash_guard.sh     $(DEVICE_TMP)/crash_guard.sh
+	$(ADB) push scripts/decoder.sh         $(DEVICE_TMP)/decoder.sh
 	$(ADB) shell chmod +x \
 	    $(DEVICE_TMP)/smb400-tuner.sh \
 	    $(DEVICE_TMP)/start_mirakc.sh \
 	    $(DEVICE_TMP)/stop_android_tv.sh \
-	    $(DEVICE_TMP)/crash_guard.sh
+	    $(DEVICE_TMP)/crash_guard.sh \
+	    $(DEVICE_TMP)/decoder.sh
 
 push-config:
 	@echo "[*] Pushing config..."
@@ -260,7 +286,8 @@ stop:
 	    pkill -9 tunertest 2>/dev/null; \
 	    pkill -9 -f tuner-stream 2>/dev/null; \
 	    pkill -9 -f crash_guard.sh 2>/dev/null; \
-	    rm -f $(DEVICE_TMP)/crash_guard.pid; \
+	    pkill -9 -f /data/local/tmp/acas_proxy 2>/dev/null; \
+	    rm -f $(DEVICE_TMP)/crash_guard.pid $(DEVICE_TMP)/acas_proxy.pid; \
 	    sleep 1; true"
 	-$(ADB) shell " \
 	    grep mirakc-root /proc/mounts | while read d mp r; do echo \"\$$mp\"; done | sort -r | \
@@ -283,17 +310,17 @@ log:
 	$(ADB) shell "tail -50 $(DEVICE_TMP)/mirakc.log"
 
 # BS4K 45168 から 5 秒受信して先頭バイトを表示
-# 正常: 7f 02 ... または 7f 03 ... (IPv4/IPv6 TLV コンテンツ)
-# 異常: 7f ff ... (Null TLV = 未復号) またはデータなし
+# チューナー出力は「生（スクランブル済み）TLV」。
+# 復号するには decoder.sh / b61dec（ローカルまたは -acas リモート）を通す。
 test:
-	@echo "Streaming BS4K 45168 for 5s..."
+	@echo "Streaming BS4K 45168 for 5s (raw TLV)..."
 	@curl -s --max-time 8 http://$(DEVICE_IP):40772/api/channels/BS4K/45168/stream \
 	    | od -v -t x1 2>/dev/null | head -4
 
-# CS ND02 から 5 秒受信して MPEG-TS の先頭バイトを表示
-# 正常: 47 (TS同期バイト)。復号可否はACAS契約・EMM状態に依存する。
+# CS CS2 から 5 秒受信して MPEG-TS の先頭バイトを表示
+# チューナー出力は「生（スクランブル済み）MPEG-TS」。復号は b21dec / decoder.sh。
 test-cs:
-	@echo "Streaming CS CS2 for 5s..."
+	@echo "Streaming CS CS2 for 5s (raw TS)..."
 	@curl -s --max-time 8 http://$(DEVICE_IP):40772/api/channels/CS/CS2/stream \
 	    | od -v -t x1 2>/dev/null | head -4
 
@@ -303,7 +330,8 @@ help:
 	@echo ""
 	@echo "SMB400 mirakc デプロイ Makefile"
 	@echo ""
-	@echo "  make build-bins          src/ からチューナー/デコーダバイナリをビルド (初回のみ)"
+	@echo "  make build-bins          src/ からチューナー/デコーダ/acas_proxy をビルド"
+	@echo "  make build-decoders-remote  リモート用 b61dec/b21dec をホスト向けにビルド"
 	@echo "  make android-libs        デバイスから Android システムライブラリを取得"
 	@echo "  make build-mirakc-armv7  mirakc 3バイナリ (mirakc-BS4K fork) をソースからビルド"
 	@echo "  make build-webui         mirakc WebUI (mirakc-webui) をソースからビルド"

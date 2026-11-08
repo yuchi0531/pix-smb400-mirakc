@@ -45,6 +45,7 @@
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <poll.h>
+#include "acas_remote.h"
 /* time.h intentionally not included — Android bionic symbol versioning
  * is incompatible with glibc headers when cross-compiling from Ubuntu.
  * We use packet counts only for profiling. */
@@ -157,7 +158,12 @@ static sw_set_fn sw_SetData;
 static sw_get_fn sw_GetData;
 static sw_get_fn sw_GetAtr;
 
+static int  g_remote;
+static char g_remote_spec[128];
+static char g_remote_token[128];
+
 static int sci_load(void) {
+    if (g_remote) return 0; /* remote ACAS proxy: no local SCI access */
     g_libstv = dlopen("/vendor/lib/libstationtv_lt_px_stream.so", RTLD_NOW);
     if (!g_libstv) { fprintf(stderr, "dlopen libstationtv: %s\n", dlerror()); return -1; }
 #define LD(var, sym) var = dlsym(g_libstv, sym); \
@@ -174,12 +180,15 @@ static int sci_load(void) {
 }
 
 /* ===================================================================
- * ACAS chip interface  (via SCI_WRAPPER)
+ * ACAS chip interface  (via SCI_WRAPPER, or remote proxy)
  * =================================================================== */
 
-/* Send APDU to ACAS chip and receive response via SCI_WRAPPER_SetData+GetData. */
+/* Send APDU to ACAS chip (local SCI) or to the remote ACAS proxy. */
 static int acas_exchange(const uint8_t *cmd, int cmd_len,
                           uint8_t *resp, int resp_max, int *resp_len) {
+    if (g_remote) {
+        return acas_remote_exchange(cmd, cmd_len, resp, resp_max, resp_len);
+    }
     static uint8_t dummy[4];
     int dummy_len = 0;
     int r = sw_SetData((uint8_t *)cmd, cmd_len, dummy, &dummy_len);
@@ -526,22 +535,26 @@ static void print_stats(void) {
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "Usage: %s -key <64-hex-chars> [-noauth] [-v]\n\n"
-        "  -key <hex>  32-byte ACAS master key (64 hex chars)\n"
-        "  -noauth     Skip A0 hash verification (debug)\n"
-        "  -v          Verbose: print per-packet scramble detection info\n\n"
+        "Usage: %s -key <64-hex-chars> [-acas host:port] [-acas-token token]\n"
+        "          [-noauth] [-v]\n\n"
+        "  -key <hex>      32-byte ACAS master key (64 hex chars)\n"
+        "  -acas <h:p>     use a remote ACAS APDU proxy instead of local SCI\n"
+        "  -acas-token <t> token required by the proxy (optional)\n"
+        "  -noauth         Skip A0 hash verification (debug)\n"
+        "  -v              Verbose: print per-packet scramble detection info\n\n"
         "Reads TLV/MMTP from stdin, writes descrambled TLV to stdout.\n\n"
-        "Example (11.84256 GHz = IF 1164560 kHz, BS7):\n"
+        "Local ACAS (on SMB400):\n"
         "  stop pix_airtuner\n"
         "  tuner-stream-bs-ng 0 2 1164560 0 | \\\n"
         "  %s -key <64-hex-acas-master-key>\n\n"
+        "Remote ACAS (decoder on another host):\n"
+        "  tuner-stream-bs-ng ... | \\\n"
+        "  %s -key <64-hex-acas-master-key> -acas 192.168.1.133:40773\n\n"
         "ACAS Master Key:\n"
         "  Extract it from /vendor/lib/libstationtv_lt_px_stream.so on the\n"
         "  device, or read /data/local/tmp/.acas_key (deployed separately).\n"
-        "  Never commit the key to this repository.\n\n"
-        "Notes:\n"
-        "  Stop pix_airtuner before use: stop pix_airtuner\n",
-        prog, prog);
+        "  Never commit the key to this repository.\n",
+        prog, prog, prog);
     exit(1);
 }
 
@@ -573,6 +586,11 @@ int main(int argc, char **argv) {
                 master_key[j] = (uint8_t)((h<<4)|l);
             }
             have_key = 1;
+        } else if (strcmp(argv[i], "-acas")==0 && i+1<argc) {
+            snprintf(g_remote_spec, sizeof(g_remote_spec), "%s", argv[++i]);
+            g_remote = 1;
+        } else if (strcmp(argv[i], "-acas-token")==0 && i+1<argc) {
+            snprintf(g_remote_token, sizeof(g_remote_token), "%s", argv[++i]);
         } else if (strcmp(argv[i], "-noauth")==0) {
             skip_verify = 1;
         } else if (strcmp(argv[i], "-v")==0) {
@@ -593,57 +611,72 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    /* Load SCI_WRAPPER library (libstationtv_lt_px_stream.so) */
-    if (sci_load() < 0) return 1;
-
-    /* Initialize SCI for multi-process access.
-     * SCI_WRAPPER_InitForAllProcess enables the embedded ACAS chip's
-     * card-detect logic for embedded chips (unlike SCI_WRAPPER_Init). */
-    int r = sw_InitAll();
-    if (r != 0) {
-        fprintf(stderr, "b61dec: SCI_WRAPPER_InitForAllProcess failed: %d\n", r);
-        return 1;
-    }
-
-    /* Cold-reset the ACAS chip and receive ATR. */
-    r = sw_ResetF();
-    if (r != 0) {
-        fprintf(stderr, "b61dec: SCI_WRAPPER_ResetForced failed: %d\n", r);
-        return 1;
-    }
-
-    /* Wait for chip activation. */
-    r = sw_WaitAct();
-    if (r != 0) {
-        fprintf(stderr, "b61dec: SCI_WRAPPER_WaitForActivation failed: %d\n", r);
-        return 1;
-    }
-
-    /* Print ATR for diagnostics. */
-    {
-        static uint8_t atr[256];
-        int atr_len = sizeof(atr);
-        if (sw_GetAtr(atr, &atr_len) == 0 && atr_len > 0 && atr_len < 32) {
-            int j;
-            fprintf(stderr, "b61dec: ATR (%d bytes):", atr_len);
-            for (j=0; j<atr_len; j++) fprintf(stderr, " %02X", atr[j]);
-            fprintf(stderr, "\n");
-        }
-    }
-
-    /* A0 mutual authentication via SCI_WRAPPER_GetCkc.
-     * arg3=NULL: uses the built-in master key embedded in libstationtv.
-     * Writes: a0_cmd[16] = fixed_header[8] + a0init[8]
-     *         a0_resp[8] = card's a0response
-     * The derived KCL is stored internally in the library.
-     */
     static uint8_t g_a0_cmd[64], g_a0_resp[64];
-    r = sw_GetCkc(g_a0_cmd, g_a0_resp, NULL);
-    if (r != 0) {
-        fprintf(stderr, "b61dec: SCI_WRAPPER_GetCkc failed: %d\n", r);
-        return 1;
+
+    if (g_remote) {
+        /* Remote decoder: the ACAS chip is on the SMB400.  Fetch the A0
+         * command/response from the proxy and derive KCL locally. */
+        if (acas_remote_connect(g_remote_spec, g_remote_token) < 0) {
+            fprintf(stderr, "b61dec: cannot connect to ACAS proxy %s\n", g_remote_spec);
+            return 1;
+        }
+        if (acas_remote_get_ckc(g_a0_cmd, NULL, g_a0_resp, NULL) < 0) {
+            fprintf(stderr, "b61dec: GET_CKC failed\n");
+            return 1;
+        }
+        fprintf(stderr, "b61dec: remote ACAS connected (%s)\n", g_remote_spec);
+    } else {
+        /* Load SCI_WRAPPER library (libstationtv_lt_px_stream.so) */
+        if (sci_load() < 0) return 1;
+
+        /* Initialize SCI for multi-process access.
+         * SCI_WRAPPER_InitForAllProcess enables the embedded ACAS chip's
+         * card-detect logic for embedded chips (unlike SCI_WRAPPER_Init). */
+        int r = sw_InitAll();
+        if (r != 0) {
+            fprintf(stderr, "b61dec: SCI_WRAPPER_InitForAllProcess failed: %d\n", r);
+            return 1;
+        }
+
+        /* Cold-reset the ACAS chip and receive ATR. */
+        r = sw_ResetF();
+        if (r != 0) {
+            fprintf(stderr, "b61dec: SCI_WRAPPER_ResetForced failed: %d\n", r);
+            return 1;
+        }
+
+        /* Wait for chip activation. */
+        r = sw_WaitAct();
+        if (r != 0) {
+            fprintf(stderr, "b61dec: SCI_WRAPPER_WaitForActivation failed: %d\n", r);
+            return 1;
+        }
+
+        /* Print ATR for diagnostics. */
+        {
+            static uint8_t atr[256];
+            int atr_len = sizeof(atr);
+            if (sw_GetAtr(atr, &atr_len) == 0 && atr_len > 0 && atr_len < 32) {
+                int j;
+                fprintf(stderr, "b61dec: ATR (%d bytes):", atr_len);
+                for (j=0; j<atr_len; j++) fprintf(stderr, " %02X", atr[j]);
+                fprintf(stderr, "\n");
+            }
+        }
+
+        /* A0 mutual authentication via SCI_WRAPPER_GetCkc.
+         * arg3=NULL: uses the built-in master key embedded in libstationtv.
+         * Writes: a0_cmd[16] = fixed_header[8] + a0init[8]
+         *         a0_resp[8] = card's a0response
+         * The derived KCL is stored internally in the library.
+         */
+        r = sw_GetCkc(g_a0_cmd, g_a0_resp, NULL);
+        if (r != 0) {
+            fprintf(stderr, "b61dec: SCI_WRAPPER_GetCkc failed: %d\n", r);
+            return 1;
+        }
+        fprintf(stderr, "b61dec: ACAS A0 auth OK (KCL stored internally)\n");
     }
-    fprintf(stderr, "b61dec: ACAS A0 auth OK (KCL stored internally)\n");
 
     /* Now derive our own KCL copy using the captured a0_cmd and a0_resp.
      * a0_cmd[8..15] = a0init, a0_resp[0..7] = a0response. */
@@ -882,6 +915,7 @@ done:
     print_stats();
     if (g_ctx_odd)  EVP_CIPHER_CTX_free(g_ctx_odd);
     if (g_ctx_even) EVP_CIPHER_CTX_free(g_ctx_even);
+    if (g_remote) acas_remote_close();
     if (g_libstv) dlclose(g_libstv);
     return 0;
 }

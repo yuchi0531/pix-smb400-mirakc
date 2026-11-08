@@ -70,6 +70,31 @@ pkill -f "tuner-stream" 2>/dev/null || true
 pkill -f "b61dec" 2>/dev/null || true
 pkill -f "b21dec" 2>/dev/null || true
 
+# --- ACAS APDU proxy (remote decoder support) ---
+# Exposes the on-device ACAS chip over TCP (default 40773).  Only starts if
+# the binary has been pushed.  Token is read from
+# /data/local/tmp/.acas_proxy_token when present.
+ACAS_PROXY=/data/local/tmp/acas_proxy
+ACAS_PROXY_PID=/data/local/tmp/acas_proxy.pid
+ACAS_PROXY_LOG=/data/local/tmp/acas_proxy.log
+ACAS_PROXY_PORT=40773
+if [ -x "$ACAS_PROXY" ]; then
+    pkill -f "$ACAS_PROXY" 2>/dev/null || true
+    rm -f "$ACAS_PROXY_PID"
+    token=""
+    [ -f /data/local/tmp/.acas_proxy_token ] && \
+        token=$(cat /data/local/tmp/.acas_proxy_token 2>/dev/null | tr -d '[:space:]')
+    if [ -n "$token" ]; then
+        setsid "$ACAS_PROXY" -p "$ACAS_PROXY_PORT" -t "$token" >> "$ACAS_PROXY_LOG" 2>&1 &
+    else
+        setsid "$ACAS_PROXY" -p "$ACAS_PROXY_PORT" >> "$ACAS_PROXY_LOG" 2>&1 &
+    fi
+    echo $! > "$ACAS_PROXY_PID"
+    echo "[mirakc] acas_proxy launched (pid=$!, port=$ACAS_PROXY_PORT)" >> "$LOG"
+else
+    echo "[mirakc] acas_proxy not found — remote decoding disabled" >> "$LOG"
+fi
+
 # --- Bind-mount host directories into the Alpine rootfs ---
 mkdir -p "$ROOTFS/data/local/tmp" "$ROOTFS/system" "$ROOTFS/vendor"
 mkdir -p "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/dev"
