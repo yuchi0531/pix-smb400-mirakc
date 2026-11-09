@@ -107,6 +107,54 @@ case "$CHANNEL" in
         pkill -9 -f "tuner-stream-bs-ng 0 1 $IF_KHZ" 2>/dev/null || true
         pkill -9 tunertest 2>/dev/null || true
         ;;
+    C1[3-9]|C2[0-2])
+        # ISDB-C (ITU-T J.83 Annex C): CATV mid-band C13-C22 = 111-165 MHz
+        N=${CHANNEL#C}
+        IF_KHZ=$((111000 + (N - 13) * 6000))
+        chroot /proc/1/root /system/bin/sh -c \
+            "$BINDIR/tuner-stream-isdbc 0 $IF_KHZ 6" &
+        CHROOT_PID=$!
+        trap "pkill -f 'tuner-stream-isdbc 0 $IF_KHZ' 2>/dev/null; \
+              sleep 1; \
+              kill -9 $CHROOT_PID 2>/dev/null; \
+              pkill -9 -f 'tuner-stream-isdbc 0 $IF_KHZ' 2>/dev/null; \
+              pkill -9 tunertest_oem 2>/dev/null; exit 0" TERM INT
+        wait $CHROOT_PID
+        pkill -9 -f "tuner-stream-isdbc 0 $IF_KHZ" 2>/dev/null || true
+        pkill -9 tunertest_oem 2>/dev/null || true
+        ;;
+    C2[3-9]|C3[0-9]|C4[0-9]|C5[0-9]|C6[0-3])
+        # ISDB-C: CATV super-high band C23-C63 = 225-465 MHz
+        N=${CHANNEL#C}
+        IF_KHZ=$((225000 + (N - 23) * 6000))
+        chroot /proc/1/root /system/bin/sh -c \
+            "$BINDIR/tuner-stream-isdbc 0 $IF_KHZ 6" &
+        CHROOT_PID=$!
+        trap "pkill -f 'tuner-stream-isdbc 0 $IF_KHZ' 2>/dev/null; \
+              sleep 1; \
+              kill -9 $CHROOT_PID 2>/dev/null; \
+              pkill -9 -f 'tuner-stream-isdbc 0 $IF_KHZ' 2>/dev/null; \
+              pkill -9 tunertest_oem 2>/dev/null; exit 0" TERM INT
+        wait $CHROOT_PID
+        pkill -9 -f "tuner-stream-isdbc 0 $IF_KHZ" 2>/dev/null || true
+        pkill -9 tunertest_oem 2>/dev/null || true
+        ;;
+    U1[3-9]|U2[0-9]|U3[0-9]|U4[0-9]|U5[0-9]|U6[0-2])
+        # ISDB-C: UHF 13-62 = 473-767 MHz (BS/BS4K トラモジ等)
+        N=${CHANNEL#U}
+        IF_KHZ=$((473000 + (N - 13) * 6000))
+        chroot /proc/1/root /system/bin/sh -c \
+            "$BINDIR/tuner-stream-isdbc 0 $IF_KHZ 6" &
+        CHROOT_PID=$!
+        trap "pkill -f 'tuner-stream-isdbc 0 $IF_KHZ' 2>/dev/null; \
+              sleep 1; \
+              kill -9 $CHROOT_PID 2>/dev/null; \
+              pkill -9 -f 'tuner-stream-isdbc 0 $IF_KHZ' 2>/dev/null; \
+              pkill -9 tunertest_oem 2>/dev/null; exit 0" TERM INT
+        wait $CHROOT_PID
+        pkill -9 -f "tuner-stream-isdbc 0 $IF_KHZ" 2>/dev/null || true
+        pkill -9 tunertest_oem 2>/dev/null || true
+        ;;
     4[0-9][0-9][0-9][0-9])
         # BS4K (ISDB-S3): 5-digit stream ID — static IF frequency lookup
         case "$CHANNEL" in

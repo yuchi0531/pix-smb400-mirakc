@@ -592,6 +592,17 @@ ffplay "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/st
 
 110 度 CS（ISDB-S 2K 相当）も BS と同じ経路（`tuner-stream-bs-ng` mode=1 → `b25dec`）で受信します。`config/config.yml` には .111 からインポートした CS チャンネル（CS2〜CS24, recpt1 互換、実測 services 付き）が含まれます（`make test-cs` が CS/CS2 を叩きます）。
 
+### ISDB-C（ケーブルテレビ / BS・BS4K トラモジ）
+
+`tuner-stream-isdbc` は Sony CXD2857 を DVB-C 6 MHz（ITU-T J.83 Annex C, 64QAM 5.274 Mbaud）に切り替え、ケーブル線の ISDB-C を生 TS で出力します。
+
+- チャンネル形式: `C13`–`C63`（CATV 計画: C13-C22 = 111–165 MHz, C23-C63 = 225–465 MHz）、`U13`–`U62`（UHF 計画: 473–767 MHz）
+- 手順: `tunertest_oem` で RF を ISDB-T 6 MHz に合わせて 12 秒セトリング → CXD2857 を I2C (bus2, SLV-T `0xD8` / SLV-X `0xDC`) で ISDB-C に切替 → DMX から生 TS
+- **C-CAS は復号しません**。`tuner-filter` の `CATV` は `cat` で素通し（2K の B-CAS 用 `b25dec` は適用不可）
+- 実測: `C14` (117 MHz) = PAT program 430、`C43` (345 MHz) = TSID 16528 (BS11)、`C20` (153 MHz) = BS4K TLV
+- `config/config.yml` の `channels` に `type: CATV` / `channel: C14` 等を追加すると mirakc から利用できます（本ブランチでは実チャンネルは未登録）
+
+
 | name | type | channel |
 |------|------|---------|
 | CS2 | CS | CS2 |
