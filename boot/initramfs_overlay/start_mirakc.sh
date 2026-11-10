@@ -13,7 +13,6 @@ PIDFILE=/data/local/tmp/mirakc-start.pid
 # --- Preflight: start only if the mirakc setup is fully present. ---
 # If anything required is missing we exit immediately WITHOUT stopping
 # Android TV, so a not-yet-provisioned device is left completely untouched.
-# (This runs before the singleton check / pidfile write on purpose.)
 REQUIRED="
 $ROOTFS/bin/sh
 $MIRAKC/bin/mirakc
@@ -24,6 +23,7 @@ $MIRAKC/strings.yml
 /data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/ld-linux-armhf.so.3
 /data/local/tmp/smb400-tuner.sh
 /data/local/tmp/tuner-stream-ng
+/data/local/tmp/tuner-stream-isdbc
 /data/local/tmp/tuner-stream-bs-ng
 /data/local/tmp/b25dec
 /data/local/tmp/b61dec
@@ -37,12 +37,7 @@ for f in $REQUIRED; do
 done
 if [ -n "$missing" ]; then
     echo "[mirakc] not starting — missing file(s):$missing" >> "$LOG"
-    exit 0
-fi
-
-# ACAS master key is optional for startup but required for descrambling.
-if [ ! -s /data/local/tmp/.acas_key ]; then
-    echo "[mirakc] warning: /data/local/tmp/.acas_key missing — streams will be scrambled." >> "$LOG"
+    exit 1
 fi
 
 # Singleton: if another instance is already running, exit immediately.
@@ -54,6 +49,11 @@ if [ -f "$PIDFILE" ]; then
     fi
 fi
 echo $$ > "$PIDFILE"
+
+# ACAS master key is optional for startup but required for descrambling.
+if [ ! -s /data/local/tmp/.acas_key ]; then
+    echo "[mirakc] warning: /data/local/tmp/.acas_key missing — streams will be scrambled." >> "$LOG"
+fi
 
 # Free memory by stopping unused Android TV components (display, audio, camera,
 # DRM, OEM apps, etc.).  OEM tuner services are also stopped here so b61dec can
@@ -164,7 +164,7 @@ fi
 # Run mirakc ONCE — intentionally NO restart loop.
 # On this device a crash-looping decoder can spawn a crash_dump32 fork-bomb
 # and brick the box, so we never auto-restart.  If mirakc exits, we log and
-# stop; recover with `make start` or a reboot.
+# stop; recover by running this again (`make start`) or rebooting.
 # mirakc is a glibc binary (needs GLIBC_2.39 / GLIBCXX_3.4.32); the loader
 # symlink above plus LD_LIBRARY_PATH make it run inside the musl chroot.
 chroot "$ROOTFS" /bin/sh -l -c "
@@ -180,4 +180,4 @@ code=$?
 
 echo "[mirakc] process exited (code=$code) — not restarting (safe mode)." >> "$LOG"
 rm -f "$PIDFILE" 2>/dev/null || true
-exit 0
+exit "$code"

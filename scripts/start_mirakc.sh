@@ -23,6 +23,7 @@ $MIRAKC/strings.yml
 /data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/ld-linux-armhf.so.3
 /data/local/tmp/smb400-tuner.sh
 /data/local/tmp/tuner-stream-ng
+/data/local/tmp/tuner-stream-isdbc
 /data/local/tmp/tuner-stream-bs-ng
 /data/local/tmp/b25dec
 /data/local/tmp/b61dec

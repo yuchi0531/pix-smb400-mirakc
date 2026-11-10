@@ -598,9 +598,11 @@ ffplay "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/st
 
 - チャンネル形式: `C13`–`C63`（CATV 計画: C13-C22 = 111–165 MHz, C23-C63 = 225–465 MHz）、`U13`–`U62`（UHF 計画: 473–767 MHz）
 - 手順: `tunertest_oem` で RF を ISDB-T 6 MHz に合わせて 12 秒セトリング → CXD2857 を I2C (bus2, SLV-T `0xD8` / SLV-X `0xDC`) で ISDB-C に切替 → DMX から生 TS
-- **C-CAS は復号しません**。`tuner-filter` の `CATV` は `cat` で素通し（2K の B-CAS 用 `b25dec` は適用不可）
+- mirakc の `ChannelType` は `GR/BS/CS/SKY/BS4K` のみ（`CATV` は未対応）。そのため 2K は `type: BS`、BS4K は `type: BS4K` として登録し、`channel` に `Cxx` / `Uxx` を指定する
+- 2K は `b25dec`（B-CAS / MULTI2）で復号、BS4K は `b61dec`（TLV / AES）で復号
+- **C-CAS（CATV オリジナル）は復号しません**（本ブランチでは C-CAS チャンネルは未登録）
 - 実測: `C14` (117 MHz) = PAT program 430、`C43` (345 MHz) = TSID 16528 (BS11)、`C20` (153 MHz) = BS4K TLV
-- `config/config.yml` の `channels` に `type: CATV` / `channel: C14` 等を追加すると mirakc から利用できます（本ブランチでは実チャンネルは未登録）
+- `config/config.yml` には BS 2K トラモジ 14ch と BS4K トラモジ 8ch を登録済み（旧衛星 BS/BS4K エントリはコメントアウト）
 
 
 | name | type | channel |
