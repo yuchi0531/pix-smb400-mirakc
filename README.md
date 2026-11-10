@@ -493,6 +493,8 @@ bash boot/build_initramfs.sh /path/to/_kernel.img.extracted/988000
 `config/config.yml` / `config/channels.yml` / `config/services.json` はサンプルです。
 実環境のチャンネルは `make chscan` でスキャンして生成できます。
 
+`make chscan` は **ADB でデバイスへ接続して実行**します（`HOST=<ip>` または `ADB_TARGET=<ip>:5555`）。
+
 ```sh
 # 1) ACAS マスターキーを用意（BS4K/BS8K 用。64 hex）
 #    リポジトリ直下の .acas_key、または --key <file> で指定

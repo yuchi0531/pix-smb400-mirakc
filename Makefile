@@ -24,9 +24,15 @@
 # ---------- 変更可能な設定 ----------
 # ADB_TARGET 未指定時は adb devices から自動検出
 # 複数台接続時は明示指定: make <target> ADB_TARGET=192.168.1.126:5555
-# ADB を使わないターゲット (help, build-decoders-remote, build-mirakc-armv7, build-webui, chscan) は ADB なしでも実行できる。
+# ADB を使わないターゲット (help, build-decoders-remote, build-mirakc-armv7, build-webui) は ADB なしでも実行できる。
+# chscan は ADB を使う (HOST= 指定時は ADB_TARGET として扱う)。
+ifneq ($(filter chscan,$(MAKECMDGOALS)),)
+  ifdef HOST
+    ADB_TARGET := $(HOST)
+  endif
+endif
 ifndef ADB_TARGET
-  ifeq ($(filter help build-decoders-remote build-mirakc-armv7 build-webui chscan,$(MAKECMDGOALS)),)
+  ifeq ($(filter help build-decoders-remote build-mirakc-armv7 build-webui,$(MAKECMDGOALS)),)
     _DETECTED := $(shell adb devices 2>/dev/null | awk '/\tdevice$$/{print $$1}')
     ifeq ($(words $(_DETECTED)),0)
       $(error No ADB device connected. Run: adb connect <ip>:<port>)
