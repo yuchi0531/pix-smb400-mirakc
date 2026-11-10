@@ -271,7 +271,7 @@ ls -lh boot/initramfs_patched.uimg
 | ファイル | 用途 |
 |----------|------|
 | `init.pixboot.rc` | 起動時サービス定義。自動起動タイミングや追加コマンドを変更 |
-| `start_mirakc.sh` | mirakc 自動起動スクリプト（電源 ON 時に実行される版）。`MIRAKC_EPG_FRESH_PERIOD=30d` によりキャッシュが新鮮な間は起動時 EPG スキャンを省略 |
+| `start_mirakc.sh` | mirakc 自動起動スクリプト（電源 ON 時に実行される版）。`MIRAKC_EPG_FRESH_PERIOD=30d` で起動時 EPG スキャンを省略し、`MIRAKC_TUNER_STARTUP_PROBE_TIMEOUT_MS=20000` で SMB400 のチューナ起動（routes の衛星→CATV フォールバック）を待つ |
 | `smb400_tuner.sh` | チューナー制御スクリプト |
 | `default.prop` | デバッグプロパティ（変更不要） |
 

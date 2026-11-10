@@ -38,7 +38,7 @@ resource:
 channels:
   # Mirakurun (192.168.100.111) の channels.yml から変換
   #   scripts/import_mirakurun_channels.py / 元データ: tmp/channels-111/api-channels.json
-  # channel 値の解釈は smb400-tuner.sh が行う。復号はすべて同スクリプト内で完了する。
+  # channel 値の解釈は smb400-tuner.sh が行う。復号は tuner-filter (b25dec / b61dec) が行う。
   # --- GR (ISDB-T 地上波) ---
   # channel = 物理チャンネル番号 (13-62)。services は .111 の実測 SDT 由来。
   - name: "Ｊ：ＣＯＭテレビ"

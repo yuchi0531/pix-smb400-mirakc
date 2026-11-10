@@ -1,8 +1,8 @@
 # PIX-SMB400 mirakc
 
-PIX-SMB400（HiSilicon Hi3798CV200 搭載 Android TV）上で [mirakc](https://github.com/mirakc/mirakc)（Rust 製 Mirakurun 互換 PVR バックエンド）を実行し、地上波（ISDB-T）・BS（ISDB-S）・BS4K / BS8K（ISDB-S3）を受信するためのプロジェクトです。
+PIX-SMB400（HiSilicon Hi3798CV200 搭載 Android TV）上で [mirakc](https://github.com/mirakc/mirakc)（Rust 製 Mirakurun 互換 PVR バックエンド）を実行し、地上波（ISDB-T）・BS（ISDB-S）・BS4K / BS8K（ISDB-S3）・CATV（ISDB-C / トラモジ）を受信するためのプロジェクトです。
 
-本リポジトリは BS4K / BS8K の **TLV passthrough 対応** を追加した [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K) フォークを使用します。ARMv7 (glibc) 版の mirakc バイナリは常にソースから `make build-mirakc-armv7` でクロスビルドします（クロスビルド環境が必要。デプロイ時に自動実行されます）。リポジトリにはバイナリを含みません。
+本リポジトリは BS4K / BS8K の **TLV passthrough 対応** と **routes / CATV** を追加した [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K) フォーク（`main`）を使用します。ARMv7 (glibc) 版の mirakc バイナリは常にソースから `make build-mirakc-armv7` でクロスビルドします（クロスビルド環境が必要。デプロイ時に自動実行されます）。リポジトリにはバイナリを含みません。
 
 Web UI は [yuchi0531/mirakc-webui](https://github.com/yuchi0531/mirakc-webui)（mirakc 用静的 SPA）をソースからビルドして `make build-webui` / `make push-webui` で導入し、mirakc の `server.mounts` で `/www` として配信します（[Web UI (mirakc-webui)](#web-ui-mirakc-webui) 参照）。
 
@@ -71,7 +71,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 
 - `gcc-arm-linux-gnueabi` + `libc6-dev-armel-cross` + `libssl-dev` — `make build-bins`（ARM32 チューナーバイナリのクロスコンパイル）
 - `gcc-arm-linux-gnueabihf` + `g++-arm-linux-gnueabihf` + `libc6-dev-armhf-cross` + `binutils-arm-linux-gnueabihf` + `cmake` + `ninja-build` + `autoconf` + `automake` + `libtool` + `pkg-config` + `patch` — `make build-mirakc-armv7`（mirakc-BS4K 本体の ARMv7 クロスビルド。mirakc-arib は `vendor/aribb24` を autotools でビルドするため autoconf 系が必要）
-- **Rust** feature — `make build-mirakc-armv7` が使う `cargo` / `rustup`
+- **Rust** feature — `make build-mirakc-armv7` が使う `cargo` / `rustup`（`main` は 1.99.0 以上）
 - **Node.js** feature — `make build-webui`（mirakc-webui のビルド）
 - `binwalk` + `cpio` — `kernel.img` から initramfs cpio を展開（[Step 0](#step-0-kernelimg-を入手して展開する)）
 - `adb` — デバイスとのバイナリ転送・android-libs 取得
@@ -102,7 +102,8 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   ├── build_initramfs.sh           initramfs_patched.uimg ビルドスクリプト
 │   ├── usb_boot_files/              生成物: bootargs.bin / root_rsa_pub_crc.bin / rsa_key.pem（gitignore 対象）
 │   └── initramfs_overlay/           initramfs オーバーレイファイル
-│       └── start_mirakc.sh          mirakc 自動起動スクリプト（電源 ON 時に実行される版）
+│       ├── start_mirakc.sh          mirakc 自動起動スクリプト（電源 ON 時に実行される版）
+│       └── smb400_tuner.sh          チューナーラッパー（起動時に /data/local/tmp へコピー）
 ├── bin/                             ビルドしたチューナー/デコーダ/ACASプロキシの出力先（make build-bins で生成。リモート用は bin/x86/）
 ├── tmp/mirakc-armv7/                mirakc 本体 ARMv7 (glibc) バイナリの出力先（gitignore 対象・コミットされない）
 │   ├── mirakc                       mirakc 本体（yuchi0531/mirakc-BS4K fork）
@@ -126,6 +127,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   └── build_webui.sh               mirakc-webui をソースからビルドして dist を配置
 ├── config/
 │   ├── config.yml                   mirakc 設定（server / channels / tuners / filters / jobs）
+│   ├── channels.yml                 J:COM 関東 + BS/CS の channels 例（参照用。config.yml には自動で読まれない）
 │   ├── services.json                サービス定義（mirakc の EPG キャッシュ services.json として配置）
 │   └── strings.yml                  mirakc 日本語文字列定義
 └── src/                             バイナリの C ソースコード（make build-bins でビルド）
@@ -135,6 +137,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
     ├── acas_remote.c / acas_remote.h リモート ACAS クライアント（b61dec/b25dec 共用）
     ├── tuner-stream-ng.c            地上波（ISDB-T, MPEG-TS）チューナー
     ├── tuner-stream-bs-ng.c         BS4K / BS8K / BS / CS（ISDB-S/S3）チューナー
+    ├── tuner-stream-isdbc.c         CATV / トラモジ（ISDB-C, CXD2857）チューナー
     ├── tuner-stream-bs.c            BS（ISDB-S, MPEG-TS）チューナー（mode=1）
     └── startup.c                    Android PIE 用 _start エントリポイント
 ```
@@ -149,6 +152,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 | `/data/local/tmp/mirakc/www/` | Web UI (mirakc-webui)（`server.mounts` で `/www` として配信） |
 | `/data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/` | glibc ランタイム（`make setup-runtime` で配備） |
 | `/data/local/tmp/mirakc-root/` | Alpine rootfs |
+| `/data/local/tmp/tuner-stream-ng` / `tuner-stream-isdbc` / `tuner-stream-bs-ng` / `b25dec` / `b61dec` | チューナー/デコーダ（`make push-bins` で配備） |
 | `/data/local/tmp/acas_proxy` | ACAS APDU プロキシ（リモートデコーダ用、TCP 40773） |
 | `/data/local/tmp/acas_proxy.log` | acas_proxy ログ |
 | `/data/local/tmp/mirakc.log` | ログ |
@@ -299,7 +303,7 @@ adb -s <デバイスのIPアドレス>:5555 shell id
 
 ### Step 4: チューナーバイナリをビルドする
 
-`src/` の C ソースからチューナー/デコーダ/ACASプロキシバイナリ（`tuner-stream-ng` / `tuner-stream-bs-ng` / `b61dec` / `tuner-stream-bs` / `b25dec` / `acas_proxy`）をビルドします。
+`src/` の C ソースからチューナー/デコーダ/ACASプロキシバイナリ（`tuner-stream-ng` / `tuner-stream-isdbc` / `tuner-stream-bs-ng` / `b61dec` / `tuner-stream-bs` / `b25dec` / `acas_proxy`）をビルドします。
 リンクには実機の Android システムライブラリが必要なため、`make build-bins` が ADB 経由で自動取得します（デバイスが USB ブート中であること）。
 なおチューナーコマンドは生（スクランブル済み）ストリームを出力し、復号はデコーダ（`b25dec` / `b61dec`、ローカルまたはリモート）が行います（[リモートデコーダ / ACAS proxy](#リモートデコーダ--acas-proxy) 参照）。
 
@@ -731,7 +735,7 @@ http://<デバイスのIPアドレス>:40772/www
 
 ## サービス登録と EPG について
 
-チャンネル・サービスは Mirakurun サーバ（`192.168.100.111`）からインポート済みです。`config/config.yml` の `channels` と、`make deploy-mirakc` で `/data/local/tmp/mirakc/epg/services.json` に配置されるサービス定義（`config/services.json`）により、**初回からサービスが登録された状態**で起動します。
+チャンネル・サービスは J:COM 関東（`192.168.100.113`）の CATV / BS(2K) / BS4K（トラモジ）と、Mirakurun（`192.168.100.111`）の GR / CS をインポート済みです。`config/config.yml` の `channels` と、`make deploy-mirakc` で `/data/local/tmp/mirakc/epg/services.json` に配置されるサービス定義（`config/services.json`）により、**初回からサービスが登録された状態**で起動します。`config/channels.yml` は J:COM 関東 + BS/CS のチャンネル例（参照用。`config.yml` には自動で読まれません）。
 
 ```sh
 # 登録されたサービスを確認
