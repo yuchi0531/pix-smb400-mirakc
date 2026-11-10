@@ -8,7 +8,7 @@
 #
 # Options:
 #   --catv          also scan CATV (ISDB-C): C13-C63 and U13-U62
-#   --quick         only scan the common Kanto/BS/BS4K channels (for testing)
+#   --quick         scan GR only; reuse the sample BS/CS/BS4K (and CATV when not scanning it)
 #   --timeout <s>   per-channel scan timeout (default: 12s GR/CS, 20s BS, 25s BS4K)
 #   --key <file>    64-hex ACAS master key file
 #   --force         run even if a tuner user (recording/viewing) is active
@@ -141,11 +141,19 @@ fi
 
 # ---------------------------------------------------------------- channel lists
 if [ "$QUICK" -eq 1 ]; then
-    GR_CHANNELS="13 16 18 21 22 23 24 25 26 27 30 32"
-    BS_CHANNELS="BS15_0 BS15_1 BS01_0 BS03_0 BS13_0"
-    CS_CHANNELS="CS2"
-    BS4K_CHANNELS="45168 45232 45280"
-    CATV_CHANNELS="U38 U39 U45 U47 U50"
+    # Terrestrial (GR) differs by region -> measure it on this device.
+    GR_CHANNELS=$(seq 13 62)
+    # Satellite (BS/CS/BS4K) is nationwide and identical -> reuse the sample
+    # config instead of burning tuner time (chscan_gen.py --sample-satellite).
+    BS_CHANNELS=""
+    CS_CHANNELS=""
+    BS4K_CHANNELS=""
+    # CATV is not satellite; scan it only when --catv was requested.
+    if [ "$CATV" -eq 1 ]; then
+        CATV_CHANNELS="$(seq 13 63 | sed 's/^/C/') $(seq 13 62 | sed 's/^/U/')"
+    else
+        CATV_CHANNELS=""
+    fi
 else
     GR_CHANNELS=$(seq 13 62)
     BS_CHANNELS=$(grep -o 'BS[0-9][0-9]_[0-9]' "$REPO_ROOT/scripts/smb400-tuner.sh" | sort -u)
@@ -233,10 +241,14 @@ fi
 echo "[scan] done: $ok channel(s) with services, $skip skipped"
 
 if [ "$ok" -eq 0 ]; then
-    echo "chscan.sh: no services found; config not updated" >&2
-    cleanup_scan
-    rm -f "$MANIFEST"
-    exit 1
+    if [ "$QUICK" -eq 1 ] && [ -f "$CONFIG_DIR/config.yml" ]; then
+        echo "[scan] no GR services; generating from the sample satellite config only"
+    else
+        echo "chscan.sh: no services found; config not updated" >&2
+        cleanup_scan
+        rm -f "$MANIFEST"
+        exit 1
+    fi
 fi
 
 # ---------------------------------------------------------------- generate config
@@ -244,8 +256,22 @@ mkdir -p "$CONFIG_DIR"
 if [ ! -f "$CONFIG_DIR/config.yml" ]; then
     cp "$REPO_ROOT/config/config.yml" "$CONFIG_DIR/config.yml"
 fi
-python3 "$REPO_ROOT/scripts/chscan_gen.py" "$MANIFEST" "$CONFIG_DIR" \
-    || { echo "chscan.sh: config generation failed" >&2; exit 1; }
+if [ ! -f "$CONFIG_DIR/services.json" ]; then
+    cp "$REPO_ROOT/config/services.json" "$CONFIG_DIR/services.json"
+fi
+
+if [ "$QUICK" -eq 1 ]; then
+    if [ "$CATV" -eq 1 ]; then
+        python3 "$REPO_ROOT/scripts/chscan_gen.py" "$MANIFEST" "$CONFIG_DIR" --sample-satellite \
+            || { echo "chscan.sh: config generation failed" >&2; exit 1; }
+    else
+        python3 "$REPO_ROOT/scripts/chscan_gen.py" "$MANIFEST" "$CONFIG_DIR" --sample-satellite --sample-catv \
+            || { echo "chscan.sh: config generation failed" >&2; exit 1; }
+    fi
+else
+    python3 "$REPO_ROOT/scripts/chscan_gen.py" "$MANIFEST" "$CONFIG_DIR" \
+        || { echo "chscan.sh: config generation failed" >&2; exit 1; }
+fi
 cleanup_scan
 rm -f "$MANIFEST"
 

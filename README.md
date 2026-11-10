@@ -524,7 +524,10 @@ make chscan HOST=192.168.1.133 CHSCAN_ARGS="--quick"
   make restart ADB_TARGET=192.168.1.133:5555
   ```
 - フルスキャンは時間がかかります（GR 13-62 / BS の TSID 表 / CS 2-24 / BS4K 既知 StreamID）。
-  `--quick` は主要チャンネルのみを対象にします。
+- `--quick` は **地上波（GR 13-62）だけを実測**し、BS/CS/BS4K は全国共通なので
+  現在の `config/config.yml` / `config/services.json` のサンプルをそのまま引き継ぎます
+  （衛星波のスキャン時間を省略する高速モード）。CATV トラモジはサンプルに含まれる場合のみ
+  引き継ぎ、`--catv` を付けた場合は CATV も実測します。
 - CATV は `CATV=1`（または `--catv`）のときだけ C13-C63 / U13-U62 を追加します。
 
 ---
