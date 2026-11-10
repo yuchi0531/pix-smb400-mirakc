@@ -1,8 +1,8 @@
 # PIX-SMB400 mirakc
 
-PIX-SMB400（HiSilicon Hi3798CV200 搭載 Android TV）上で [mirakc](https://github.com/mirakc/mirakc)（Rust 製 Mirakurun 互換 PVR バックエンド）を実行し、地上波（ISDB-T）・BS（ISDB-S）・BS4K / BS8K（ISDB-S3）を受信するためのプロジェクトです。
+PIX-SMB400（HiSilicon Hi3798CV200 搭載 Android TV）上で [mirakc](https://github.com/mirakc/mirakc)（Rust 製 Mirakurun 互換 PVR バックエンド）を実行し、地上波（ISDB-T）・BS（ISDB-S）・BS4K / BS8K（ISDB-S3）・CATV（ISDB-C / トラモジ）を受信するためのプロジェクトです。
 
-本リポジトリは BS4K / BS8K の **TLV passthrough 対応** を追加した [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K) フォークを使用します。ARMv7 (glibc) 版の mirakc バイナリは常にソースから `make build-mirakc-armv7` でクロスビルドします（クロスビルド環境が必要。デプロイ時に自動実行されます）。リポジトリにはバイナリを含みません。
+本リポジトリは BS4K / BS8K の **TLV passthrough 対応** と **routes / CATV** を追加した [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K) フォーク（`main`）を使用します。ARMv7 (glibc) 版の mirakc バイナリは常にソースから `make build-mirakc-armv7` でクロスビルドします（クロスビルド環境が必要。デプロイ時に自動実行されます）。リポジトリにはバイナリを含みません。
 
 Web UI は [yuchi0531/mirakc-webui](https://github.com/yuchi0531/mirakc-webui)（mirakc 用静的 SPA）をソースからビルドして `make build-webui` / `make push-webui` で導入し、mirakc の `server.mounts` で `/www` として配信します（[Web UI (mirakc-webui)](#web-ui-mirakc-webui) 参照）。
 
@@ -71,7 +71,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 
 - `gcc-arm-linux-gnueabi` + `libc6-dev-armel-cross` + `libssl-dev` — `make build-bins`（ARM32 チューナーバイナリのクロスコンパイル）
 - `gcc-arm-linux-gnueabihf` + `g++-arm-linux-gnueabihf` + `libc6-dev-armhf-cross` + `binutils-arm-linux-gnueabihf` + `cmake` + `ninja-build` + `autoconf` + `automake` + `libtool` + `pkg-config` + `patch` — `make build-mirakc-armv7`（mirakc-BS4K 本体の ARMv7 クロスビルド。mirakc-arib は `vendor/aribb24` を autotools でビルドするため autoconf 系が必要）
-- **Rust** feature — `make build-mirakc-armv7` が使う `cargo` / `rustup`
+- **Rust** feature — `make build-mirakc-armv7` が使う `cargo` / `rustup`（`main` は 1.99.0 以上）
 - **Node.js** feature — `make build-webui`（mirakc-webui のビルド）
 - `binwalk` + `cpio` — `kernel.img` から initramfs cpio を展開（[Step 0](#step-0-kernelimg-を入手して展開する)）
 - `adb` — デバイスとのバイナリ転送・android-libs 取得
@@ -102,7 +102,8 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   ├── build_initramfs.sh           initramfs_patched.uimg ビルドスクリプト
 │   ├── usb_boot_files/              生成物: bootargs.bin / root_rsa_pub_crc.bin / rsa_key.pem（gitignore 対象）
 │   └── initramfs_overlay/           initramfs オーバーレイファイル
-│       └── start_mirakc.sh          mirakc 自動起動スクリプト（電源 ON 時に実行される版）
+│       ├── start_mirakc.sh          mirakc 自動起動スクリプト（電源 ON 時に実行される版）
+│       └── smb400_tuner.sh          チューナーラッパー（起動時に /data/local/tmp へコピー）
 ├── bin/                             ビルドしたチューナー/デコーダ/ACASプロキシの出力先（make build-bins で生成。リモート用は bin/x86/）
 ├── tmp/mirakc-armv7/                mirakc 本体 ARMv7 (glibc) バイナリの出力先（gitignore 対象・コミットされない）
 │   ├── mirakc                       mirakc 本体（yuchi0531/mirakc-BS4K fork）
@@ -126,6 +127,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   └── build_webui.sh               mirakc-webui をソースからビルドして dist を配置
 ├── config/
 │   ├── config.yml                   mirakc 設定（server / channels / tuners / filters / jobs）
+│   ├── channels.yml                 J:COM 関東 + BS/CS の channels 例（参照用。config.yml には自動で読まれない）
 │   ├── services.json                サービス定義（mirakc の EPG キャッシュ services.json として配置）
 │   └── strings.yml                  mirakc 日本語文字列定義
 └── src/                             バイナリの C ソースコード（make build-bins でビルド）
@@ -135,6 +137,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
     ├── acas_remote.c / acas_remote.h リモート ACAS クライアント（b61dec/b25dec 共用）
     ├── tuner-stream-ng.c            地上波（ISDB-T, MPEG-TS）チューナー
     ├── tuner-stream-bs-ng.c         BS4K / BS8K / BS / CS（ISDB-S/S3）チューナー
+    ├── tuner-stream-isdbc.c         CATV / トラモジ（ISDB-C, CXD2857）チューナー
     ├── tuner-stream-bs.c            BS（ISDB-S, MPEG-TS）チューナー（mode=1）
     └── startup.c                    Android PIE 用 _start エントリポイント
 ```
@@ -149,6 +152,7 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 | `/data/local/tmp/mirakc/www/` | Web UI (mirakc-webui)（`server.mounts` で `/www` として配信） |
 | `/data/local/tmp/glibc-armhf/usr/lib/arm-linux-gnueabihf/` | glibc ランタイム（`make setup-runtime` で配備） |
 | `/data/local/tmp/mirakc-root/` | Alpine rootfs |
+| `/data/local/tmp/tuner-stream-ng` / `tuner-stream-isdbc` / `tuner-stream-bs-ng` / `b25dec` / `b61dec` | チューナー/デコーダ（`make push-bins` で配備） |
 | `/data/local/tmp/acas_proxy` | ACAS APDU プロキシ（リモートデコーダ用、TCP 40773） |
 | `/data/local/tmp/acas_proxy.log` | acas_proxy ログ |
 | `/data/local/tmp/mirakc.log` | ログ |
@@ -299,7 +303,7 @@ adb -s <デバイスのIPアドレス>:5555 shell id
 
 ### Step 4: チューナーバイナリをビルドする
 
-`src/` の C ソースからチューナー/デコーダ/ACASプロキシバイナリ（`tuner-stream-ng` / `tuner-stream-bs-ng` / `b61dec` / `tuner-stream-bs` / `b25dec` / `acas_proxy`）をビルドします。
+`src/` の C ソースからチューナー/デコーダ/ACASプロキシバイナリ（`tuner-stream-ng` / `tuner-stream-isdbc` / `tuner-stream-bs-ng` / `b61dec` / `tuner-stream-bs` / `b25dec` / `acas_proxy`）をビルドします。
 リンクには実機の Android システムライブラリが必要なため、`make build-bins` が ADB 経由で自動取得します（デバイスが USB ブート中であること）。
 なおチューナーコマンドは生（スクランブル済み）ストリームを出力し、復号はデコーダ（`b25dec` / `b61dec`、ローカルまたはリモート）が行います（[リモートデコーダ / ACAS proxy](#リモートデコーダ--acas-proxy) 参照）。
 
@@ -326,9 +330,9 @@ ARMv7 (glibc) 版の mirakc 3バイナリはリポジトリに含まれません
 make build-mirakc-armv7       # = bash scripts/build_mirakc_armv7.sh
 ```
 
-スクリプトは [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K)（既定ブランチ `smb400-minimal` = BS4K/TLV 差分のみの最小ブランチ）、[yuchi0531/mirakc-arib-tlv](https://github.com/yuchi0531/mirakc-arib-tlv)（v0.1.0）、[mirakc/mirakc-arib](https://github.com/mirakc/mirakc-arib)（既定 `0.24.41`＝最新リリースタグ）を `tmp/mirakc-cross-build/` に clone してクロスビルドし、`tmp/mirakc-armv7/` を更新します。ビルドは再利用のため再実行可能です。
+スクリプトは [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K)（既定ブランチ `main` = routes/CATV 対応）、[yuchi0531/mirakc-arib-tlv](https://github.com/yuchi0531/mirakc-arib-tlv)（v0.1.0）、[mirakc/mirakc-arib](https://github.com/mirakc/mirakc-arib)（既定 `0.24.41`＝最新リリースタグ）を `tmp/mirakc-cross-build/` に clone してクロスビルドし、`tmp/mirakc-armv7/` を更新します。ビルドは再利用のため再実行可能です。
 
-> 既定では追従先ブランチの最新（mirakc-BS4K は `smb400-minimal`）をビルドします。再現性のため特定のコミット／タグに固定したい場合は
+> 既定では追従先ブランチの最新（mirakc-BS4K は `main`）をビルドします。再現性のため特定のコミット／タグに固定したい場合は
 > `MIRAKC_REF` / `MIRAKC_TLV_REF` / `MIRAKC_ARIB_REF` を指定してください（例: `MIRAKC_REF=858a5b7 make build-mirakc-armv7`）。
 
 ---
@@ -424,10 +428,13 @@ make start ADB_TARGET=<デバイスのIPアドレス>:5555
 
 ### Step 10: ストリームを確認する
 
-チューナー出力は**生（スクランブル済み）**です。`make test` は生ストリームの先頭を表示します。
+現在の `config/config.yml` は `tuner-filter` で mirakc 側が復号する（BS4K=`b61dec`、GR/BS/CS/CATV=`b25dec`）ため、**API の `/api/channels/.../stream` は復号済み**です。`smb400-tuner.sh` を直接実行した場合のみ生（スクランブル済み）です。
 復号確認は `b61dec` / `b25dec`（ローカル、または `bin/x86/` のリモートバイナリ）を通してください（[リモートデコーダ / ACAS proxy](#リモートデコーダ--acas-proxy) 参照）。
 
-**BS4K（生TLV）:**
+**BS4K（TLV）:**
+
+> 現在の config は BS4K を CATV トラモジ（`C20`/`C21`/`C22`/`U43`/`U44`）で routes 登録しています。`45168`/`45280` は衛星 BS4K/BS8K の例（現在はコメントアウト）。
+
 
 ```sh
 make test ADB_TARGET=<デバイスのIPアドレス>:5555
@@ -436,17 +443,17 @@ make test ADB_TARGET=<デバイスのIPアドレス>:5555
 出力例:
 
 ```
-Streaming BS4K 45168 for 5s (raw TLV)...
-0000000 7f 02 00 60 60 00 00 00 ...
+Streaming BS4K C20 for 5s (TLV)...
+0000000 7f 03 05 a6 00 19 61 06 ...
 ```
 
-- 先頭が `7f` なら TLV ストリームを受信できています（中身はスクランブル済み）。
+- 先頭が `7f` なら TLV です。`tuner-filter`（`b61dec`）により復号済み（直接チューナー出力はスクランブル）。
 - 出力なし → チューナーが応答していない → `make log` でログを確認。
 
 **復号して確認（ローカルACAS or リモートACAS）:**
 
 ```sh
-curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/channels/BS4K/45168/stream" \
+curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/channels/BS4K/C20/stream" \
   | bin/x86/b61dec-remote --host <SMB400のIP> | od -v -t x1 | head -4
 # 7f 02 / 7f 03 が現れれば復号成功。失敗時は ACAS 契約/EMM/マスターキーを確認。
 ```
@@ -501,12 +508,14 @@ BS8K（左旋・ISDB-S3）にも対応しています。`config/config.yml` に�
   `type` は BS4K と同じ ISDB-S3 経路のため `BS4K` のままです。
 - 復号経路は BS4K と共通です。チューナーは生（スクランブル済み）TLV を出力し、
   `b61dec`（ローカル、またはリモートの `b61dec-remote` + ACAS proxy）が復号します。
-- ストリーム確認（生TLV）:
+> `45280`（BS8K）は現在コメントアウトされています。BS8K を使う場合は衛星 BS4K/BS8K エントリを戻してください（API の path も `BS4K/45280`）。
+
+- ストリーム確認（TLV）:
 
 ```sh
 curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/channels/BS4K/45280/stream" \
   | od -v -t x1 | head -4
-# 先頭は TLV ヘッダ 7f ...（復号前なので中身はスクランブル済み）
+# 先頭は TLV ヘッダ 7f ...（config の tuner-filter により復号済み。直接チューナー出力はスクランブル）
 ```
 
 - 復号して確認する場合:
@@ -537,21 +546,22 @@ mirakc の `service-filter` / `program-filter`（mirakc-arib）は復号後の T
 `config/config.yml` の GR 一覧は **Mirakurun サーバ（192.168.100.111）からインポートした関東（東京）の値**です。
 物理チャンネル割り当ては地域で異なるため、お住まいの地域に合わせて `channel`（13〜62）を変更してください。
 `services` は .111 の実測 SDT 由来のサービスIDが明示されており、起動時スキャンなしで登録されます。
+ワンセグ（serviceId = 12seg + 0x180）は `excluded-services` で除外しており、API にもスキャン結果にも出ません。
 
 | name | type | channel(物理) | services |
 |------|------|---------------|----------|
 | Ｊ：ＣＯＭテレビ | GR | 13 | 23656, 23657 |
-| ＴＯＫＹＯ　ＭＸ | GR | 16 | 23608-23610, 23992, 23993 |
+| ＴＯＫＹＯ　ＭＸ | GR | 16 | 23608-23610 |
 | Ｊ：ＣＯＭチャンネル | GR | 18 | 27768-27770 |
-| フジテレビ | GR | 21 | 1056-1058, 1440 |
-| ＴＢＳ | GR | 22 | 1048, 1049, 1183, 1432 |
-| テレビ東京 | GR | 23 | 1072-1074, 1456 |
-| テレビ朝日 | GR | 24 | 1064-1066, 1448 |
-| 日テレ | GR | 25 | 1040, 1041, 1424 |
-| ＮＨＫＥテレ・東京 | GR | 26 | 1032-1034, 1416 |
-| ＮＨＫ総合・東京 | GR | 27 | 1024, 1025, 1408 |
-| チバテレ | GR | 30 | 27704-27706, 28088 |
-| テレ玉 | GR | 32 | 29752-29754, 30136 |
+| フジテレビ | GR | 21 | 1056-1058 |
+| ＴＢＳ | GR | 22 | 1048, 1049, 1183 |
+| テレビ東京 | GR | 23 | 1072-1074 |
+| テレビ朝日 | GR | 24 | 1064-1066 |
+| 日テレ | GR | 25 | 1040, 1041 |
+| ＮＨＫＥテレ・東京 | GR | 26 | 1032-1034 |
+| ＮＨＫ総合・東京 | GR | 27 | 1024, 1025 |
+| チバテレ | GR | 30 | 27704-27706 |
+| テレ玉 | GR | 32 | 29752-29754 |
 
 ```sh
 # 物理チャンネル 27（関東 NHK総合）を受信して先頭を確認
@@ -562,6 +572,8 @@ ffprobe gr27.ts        # mpeg2video が見えれば復号成功
 
 
 ### BS（ISDB-S）の受信について
+
+> 現在の `config/config.yml` は BS 2K を **CATV トラモジ**（`C43` 等）として `type: CATV` で登録し、`routes` で衛星波→CATV の順に試します。以下の `BSxx_y` は衛星経路の内部チャンネル名で、API からは `type: CATV` の `Cxx`（例: `/api/channels/CATV/C43/stream`）を使います。衛星 BS を有効にする場合はコメントアウトされた `BSxx_y` エントリを戻してください。
 
 NHK BS などの**BS（ISDB-S, MPEG-TS）**にも対応しています。
 2K BS は ARIB STD-B25 系の **MULTI2**（B-CAS 方式, CA_system_id 0x0005）でスクランブルされています。
@@ -592,6 +604,22 @@ ffplay "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/st
 
 110 度 CS（ISDB-S 2K 相当）も BS と同じ経路（`tuner-stream-bs-ng` mode=1 → `b25dec`）で受信します。`config/config.yml` には .111 からインポートした CS チャンネル（CS2〜CS24, recpt1 互換、実測 services 付き）が含まれます（`make test-cs` が CS/CS2 を叩きます）。
 
+### ISDB-C（ケーブルテレビ / BS・BS4K トラモジ）
+
+`tuner-stream-isdbc` は Sony CXD2857 を DVB-C 6 MHz（ITU-T J.83 Annex C, 64QAM 5.274 Mbaud）に切り替え、ケーブル線の ISDB-C を生 TS で出力します。
+
+- チャンネル形式: `C13`–`C63`（CATV 計画: C13-C22 = 111–165 MHz, C23-C63 = 225–465 MHz）、`U13`–`U62`（UHF 計画: 473–767 MHz）
+- 手順: `tunertest_oem` で RF を ISDB-T 6 MHz に合わせて 12 秒セトリング → CXD2857 を I2C (bus2, SLV-T `0xD8` / SLV-X `0xDC`) で ISDB-C に切替 → DMX から生 TS
+- 本ブランチは mirakc-BS4K の **`main`**（`routes` / `CATV` 対応）を参照してビルドする
+- BS/BS4K は `channels[].routes` で **衛星波 → CATV トラモジ** の順に登録（衛星優先。起動失敗時のみ次経路へフォールバック）
+- 2K（BS 2K トラモジ + CATV オリジナル）は `type: CATV`、`b25dec`（B-CAS / MULTI2）で復号
+- BS4K は TLV のため `type: BS4K` のまま（`b61dec`）。routes は衛星 `45xxx` → CATV `Cxx/Uxx`
+- **C-CAS（CATV オリジナル）は復号しません**（`b25dec` では復号不可）
+- 起動プローブ: `MIRAKC_TUNER_STARTUP_PROBE_TIMEOUT_MS=20000`（既定 1s では SMB400 のコールドスタート/ISDB-C セトリングに間に合わない）
+- 実測: `C14` (117 MHz) = PAT program 430、`C43` (345 MHz) = TSID 16528 (BS11)、`C20` (153 MHz) = BS4K TLV
+- `config/config.yml` には BS 2K 14ch / BS4K 8ch / CATV オリジナル 33ch を登録済み（旧衛星 BS/BS4K エントリはコメントアウトし、routes の衛星経路として参照）
+
+
 | name | type | channel |
 |------|------|---------|
 | CS2 | CS | CS2 |
@@ -601,7 +629,9 @@ ffplay "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/st
 
 ## リモートデコーダ / ACAS proxy
 
-SMB400 のチューナーコマンドは**生（スクランブル済み）**の MPEG-TS / TLV を出力します。
+> 現在の `config/config.yml` は `tuner-filter` で mirakc 側が復号するため、**API のストリームは復号済み**です。このセクションのリモートデコーダは、`smb400-tuner.sh` を直接実行した生ストリームや、tuner-filter を持たない構成向けです。
+
+SMB400 のチューナーコマンド（`smb400-tuner.sh`）は**生（スクランブル済み）**の MPEG-TS / TLV を出力します。
 復号は次のどちらかで行います。
 
 - ローカル: `b25dec` / `b61dec`（SMB400 上）
@@ -662,7 +692,7 @@ cat scrambled.ts  | bin/x86/b25dec-remote --host 192.168.1.133 > plain.ts
 再生にはmmt/tlvに対応した [FFmpeg](https://github.com/superfashi/FFmpeg) が必要です。
 
 ```sh
-ffplay http://<デバイスのIPアドレス>:40772/api/channels/BS4K/45168/stream
+ffplay http://<デバイスのIPアドレス>:40772/api/channels/BS4K/C20/stream
 ```
 
 ### EPGStation で録画・視聴
@@ -714,7 +744,7 @@ http://<デバイスのIPアドレス>:40772/www
 
 ## サービス登録と EPG について
 
-チャンネル・サービスは Mirakurun サーバ（`192.168.100.111`）からインポート済みです。`config/config.yml` の `channels` と、`make deploy-mirakc` で `/data/local/tmp/mirakc/epg/services.json` に配置されるサービス定義（`config/services.json`）により、**初回からサービスが登録された状態**で起動します。
+チャンネル・サービスは J:COM 関東（`192.168.100.113`）の CATV / BS(2K) / BS4K（トラモジ）と、Mirakurun（`192.168.100.111`）の GR / CS をインポート済みです。`config/config.yml` の `channels` と、`make deploy-mirakc` で `/data/local/tmp/mirakc/epg/services.json` に配置されるサービス定義（`config/services.json`）により、**初回からサービスが登録された状態**で起動します。`config/channels.yml` は J:COM 関東 + BS/CS のチャンネル例（参照用。`config.yml` には自動で読まれません）。
 
 ```sh
 # 登録されたサービスを確認
@@ -856,8 +886,10 @@ adb -s <デバイスのIPアドレス>:5555 shell "grep MemAvailable /proc/memin
   - `mirakc-arib` は `vendor/aribb24` を `./bootstrap`（autoreconf）→ `./configure` でビルドするため、**autotools が無いと失敗します**。`--no-install-recommends` で構築したコンテナでは特に不足しがちです（`sudo apt install autoconf automake libtool pkg-config patch`）。
 - **rust target 不足**: スクリプトが自動で `rustup target add armv7-unknown-linux-gnueabihf` を実行します。手動なら `rustup target add armv7-unknown-linux-gnueabihf`。
 - **ネットワーク / GitHub に到達できない**: `git clone` に失敗します。プロキシ環境では `https_proxy` 等を設定します。
-- **Rust が古い**: ブランチごとに MSRV が異なります（`smb400-minimal` は `rust-version = 1.98.1`、`main` は 1.99.0）。`rustup update stable` で更新してください（古いと `cargo build` が MSRV エラーで止まります）。
-- ソースの追従先は `MIRAKC_REF` / `MIRAKC_TLV_REF` / `MIRAKC_ARIB_REF` で変更できます（既定は `smb400-minimal` / `v0.1.0` / `0.24.41`）。特定のコミットに固定すれば再現性が上がります。
+- **Rust が古い**: ブランチごとに MSRV が異なります（`main` は `rust-version = 1.99.0`）。`rustup update stable` で更新してください（古いと `cargo build` が MSRV エラーで止まります）。
+  - `main` を使う場合は `rustup toolchain install 1.99.0` と `RUSTUP_TOOLCHAIN=1.99.0 rustup target add armv7-unknown-linux-gnueabihf` を実行してください。
+  - クロス GCC は `--sysroot` 付きラッパ（例: `~/toolchains/armhf/bin/armhf-gcc`）を `CC` / `CXX` / `CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER` に指定すると、システム既定の `/usr/arm-linux-gnueabihf` が見つからない環境でもリンクできます。
+- ソースの追従先は `MIRAKC_REF` / `MIRAKC_TLV_REF` / `MIRAKC_ARIB_REF` で変更できます（既定は `main` / `v0.1.0` / `0.24.41`）。特定のコミットに固定すれば再現性が上がります。
 
 ### mirakc が起動しない
 

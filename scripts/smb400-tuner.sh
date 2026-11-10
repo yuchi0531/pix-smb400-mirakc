@@ -8,13 +8,16 @@
 #   GR:   integer 13-62    → tuner-stream-ng  (raw MPEG-TS, ISDB-T)
 #   BS:   BSxx_y           → tuner-stream-bs-ng (raw MPEG-TS, ISDB-S)
 #   CS:   CSn / NDxx       → tuner-stream-bs-ng (raw MPEG-TS, 110度CS)
-#   BS4K: integer ≥40000   → tuner-stream-bs-ng (raw TLV, ISDB-S3)
+#   BS4K: integer ≥40000 → tuner-stream-bs-ng (raw TLV, ISDB-S3)
+#         Cxx / Uxx       → tuner-stream-isdbc (CATV トラモジ / ISDB-C)
+#   CATV: C13-C63 / U13-U62       → tuner-stream-isdbc (raw MPEG-TS, ISDB-C)
 #
 # Decoding is NOT done here.  This script only tunes and emits the raw
 # (scrambled) MPEG-TS / TLV.  The decoders (b25dec / b61dec, locally or on a
 # remote host) and the ACAS proxy handle ECM/Ks/AES.
 #   - GR / BS / CS(2K): MULTI2 (ARIB STD-B25)  → b25dec
 #   - BS4K / BS8K:      ACAS-RMP (ARIB STD-B61) → b61dec
+#   - CATV (ISDB-C):    C-CAS。b25dec では復号不可（CATV オリジナル）
 #
 # tuner-stream-* run via chroot /proc/1/root to access the Android linker
 # paths required by libhi_msp.
@@ -106,6 +109,54 @@ case "$CHANNEL" in
         wait $CHROOT_PID
         pkill -9 -f "tuner-stream-bs-ng 0 1 $IF_KHZ" 2>/dev/null || true
         pkill -9 tunertest 2>/dev/null || true
+        ;;
+    C1[3-9]|C2[0-2])
+        # ISDB-C (ITU-T J.83 Annex C): CATV mid-band C13-C22 = 111-165 MHz
+        N=${CHANNEL#C}
+        IF_KHZ=$((111000 + (N - 13) * 6000))
+        chroot /proc/1/root /system/bin/sh -c \
+            "$BINDIR/tuner-stream-isdbc 0 $IF_KHZ 6" &
+        CHROOT_PID=$!
+        trap "pkill -f 'tuner-stream-isdbc 0 $IF_KHZ' 2>/dev/null; \
+              sleep 1; \
+              kill -9 $CHROOT_PID 2>/dev/null; \
+              pkill -9 -f 'tuner-stream-isdbc 0 $IF_KHZ' 2>/dev/null; \
+              pkill -9 tunertest_oem 2>/dev/null; exit 0" TERM INT
+        wait $CHROOT_PID
+        pkill -9 -f "tuner-stream-isdbc 0 $IF_KHZ" 2>/dev/null || true
+        pkill -9 tunertest_oem 2>/dev/null || true
+        ;;
+    C2[3-9]|C3[0-9]|C4[0-9]|C5[0-9]|C6[0-3])
+        # ISDB-C: CATV super-high band C23-C63 = 225-465 MHz
+        N=${CHANNEL#C}
+        IF_KHZ=$((225000 + (N - 23) * 6000))
+        chroot /proc/1/root /system/bin/sh -c \
+            "$BINDIR/tuner-stream-isdbc 0 $IF_KHZ 6" &
+        CHROOT_PID=$!
+        trap "pkill -f 'tuner-stream-isdbc 0 $IF_KHZ' 2>/dev/null; \
+              sleep 1; \
+              kill -9 $CHROOT_PID 2>/dev/null; \
+              pkill -9 -f 'tuner-stream-isdbc 0 $IF_KHZ' 2>/dev/null; \
+              pkill -9 tunertest_oem 2>/dev/null; exit 0" TERM INT
+        wait $CHROOT_PID
+        pkill -9 -f "tuner-stream-isdbc 0 $IF_KHZ" 2>/dev/null || true
+        pkill -9 tunertest_oem 2>/dev/null || true
+        ;;
+    U1[3-9]|U2[0-9]|U3[0-9]|U4[0-9]|U5[0-9]|U6[0-2])
+        # ISDB-C: UHF 13-62 = 473-767 MHz (BS/BS4K トラモジ等)
+        N=${CHANNEL#U}
+        IF_KHZ=$((473000 + (N - 13) * 6000))
+        chroot /proc/1/root /system/bin/sh -c \
+            "$BINDIR/tuner-stream-isdbc 0 $IF_KHZ 6" &
+        CHROOT_PID=$!
+        trap "pkill -f 'tuner-stream-isdbc 0 $IF_KHZ' 2>/dev/null; \
+              sleep 1; \
+              kill -9 $CHROOT_PID 2>/dev/null; \
+              pkill -9 -f 'tuner-stream-isdbc 0 $IF_KHZ' 2>/dev/null; \
+              pkill -9 tunertest_oem 2>/dev/null; exit 0" TERM INT
+        wait $CHROOT_PID
+        pkill -9 -f "tuner-stream-isdbc 0 $IF_KHZ" 2>/dev/null || true
+        pkill -9 tunertest_oem 2>/dev/null || true
         ;;
     4[0-9][0-9][0-9][0-9])
         # BS4K (ISDB-S3): 5-digit stream ID — static IF frequency lookup

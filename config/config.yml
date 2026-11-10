@@ -38,7 +38,7 @@ resource:
 channels:
   # Mirakurun (192.168.100.111) の channels.yml から変換
   #   scripts/import_mirakurun_channels.py / 元データ: tmp/channels-111/api-channels.json
-  # channel 値の解釈は smb400-tuner.sh が行う。復号はすべて同スクリプト内で完了する。
+  # channel 値の解釈は smb400-tuner.sh が行う。復号は tuner-filter (b25dec / b61dec) が行う。
   # --- GR (ISDB-T 地上波) ---
   # channel = 物理チャンネル番号 (13-62)。services は .111 の実測 SDT 由来。
   - name: "Ｊ：ＣＯＭテレビ"
@@ -48,7 +48,8 @@ channels:
   - name: "ＴＯＫＹＯ　ＭＸ"
     type: GR
     channel: "16"
-    services: [23608, 23609, 23610, 23992, 23993]
+    services: [23608, 23609, 23610]
+    excluded-services: [23992, 23993]
   - name: "Ｊ：ＣＯＭチャンネル"
     type: GR
     channel: "18"
@@ -56,183 +57,192 @@ channels:
   - name: "フジテレビ"
     type: GR
     channel: "21"
-    services: [1056, 1057, 1058, 1440]
+    services: [1056, 1057, 1058]
+    excluded-services: [1440]
   - name: "ＴＢＳ"
     type: GR
     channel: "22"
-    services: [1048, 1049, 1183, 1432]
+    services: [1048, 1049, 1183]
+    excluded-services: [1432]
   - name: "テレビ東京"
     type: GR
     channel: "23"
-    services: [1072, 1073, 1074, 1456]
+    services: [1072, 1073, 1074]
+    excluded-services: [1456]
   - name: "テレビ朝日"
     type: GR
     channel: "24"
-    services: [1064, 1065, 1066, 1448]
+    services: [1064, 1065, 1066]
+    excluded-services: [1448]
   - name: "日テレ"
     type: GR
     channel: "25"
-    services: [1040, 1041, 1424]
+    services: [1040, 1041]
+    excluded-services: [1424]
   - name: "ＮＨＫＥテレ・東京"
     type: GR
     channel: "26"
-    services: [1032, 1033, 1034, 1416]
+    services: [1032, 1033, 1034]
+    excluded-services: [1416]
   - name: "ＮＨＫ総合・東京"
     type: GR
     channel: "27"
-    services: [1024, 1025, 1408]
+    services: [1024, 1025]
+    excluded-services: [1408]
   - name: "チバテレ"
     type: GR
     channel: "30"
-    services: [27704, 27705, 27706, 28088]
+    services: [27704, 27705, 27706]
+    excluded-services: [28088]
   - name: "テレ玉"
     type: GR
     channel: "32"
-    services: [29752, 29753, 29754, 30136]
+    services: [29752, 29753, 29754]
+    excluded-services: [30136]
   # --- BS (ISDB-S, 従来2K衛星) ---
   # channel = BSxx_y (xx=トランスポンダ番号, y=相対TS)。smb400-tuner.sh の TSID 表にあるもののみ。
-  - name: "ＢＳ朝日１"
-    type: BS
-    channel: "BS01_0"
-    services: [151, 152, 153]
-  - name: "ＢＳ－ＴＢＳ"
-    type: BS
-    channel: "BS01_1"
-    services: [161, 162, 163]
-  - name: "ＢＳテレ東"
-    type: BS
-    channel: "BS01_2"
-    services: [171, 172, 173]
-  - name: "ＷＯＷＯＷプライム"
-    type: BS
-    channel: "BS03_0"
-    services: [191]
-  - name: "ＢＳアニマックス"
-    type: BS
-    channel: "BS03_1"
-    services: [236]
-  - name: "ＢＳ釣りビジョン"
-    type: BS
-    channel: "BS03_2"
-    services: [251]
-  - name: "ＷＯＷＯＷライブ"
-    type: BS
-    channel: "BS05_0"
-    services: [192]
-  - name: "ＷＯＷＯＷシネマ"
-    type: BS
-    channel: "BS05_1"
-    services: [193]
-  - name: "ＢＳ１１イレブン"
-    type: BS
-    channel: "BS09_0"
-    services: [211]
-  - name: "ＢＳ１１イレブン"
-    type: BS
-    channel: "BS09_2"
-    services: [211]
-  - name: "ＢＳ日テレ"
-    type: BS
-    channel: "BS13_0"
-    services: [141, 142, 143]
-  - name: "ＢＳフジ・１８１"
-    type: BS
-    channel: "BS13_1"
-    services: [181, 182, 183]
-  - name: "放送大学テレビ"
-    type: BS
-    channel: "BS13_2"
-    services: [231, 232]
-  - name: "ＮＨＫ　ＢＳ"
-    type: BS
-    channel: "BS15_0"
-    services: [101, 102]
-  - name: "ＢＳ１０プレミアム"
-    type: BS
-    channel: "BS15_1"
-    services: [201]
-  - name: "ＢＳ１０"
-    type: BS
-    channel: "BS15_2"
-    services: [200]
-  - name: "Ｊ　ＳＰＯＲＴＳ　４"
-    type: BS
-    channel: "BS19_0"
-    services: [245]
-  - name: "Ｊ　ＳＰＯＲＴＳ　１"
-    type: BS
-    channel: "BS19_1"
-    services: [242]
-  - name: "Ｊ　ＳＰＯＲＴＳ　２"
-    type: BS
-    channel: "BS19_2"
-    services: [243]
-  - name: "Ｊ　ＳＰＯＲＴＳ　３"
-    type: BS
-    channel: "BS19_3"
-    services: [244]
-  - name: "ＷＯＷＯＷプラス"
-    type: BS
-    channel: "BS21_0"
-    services: [252]
-  - name: "日本映画専門ｃｈ"
-    type: BS
-    channel: "BS21_1"
-    services: [255]
-  - name: "グリーンチャンネル"
-    type: BS
-    channel: "BS21_2"
-    services: [234]
-  - name: "ディズニーｃｈ"
-    type: BS
-    channel: "BS23_0"
-    services: [256]
-  - name: "ＢＳよしもと"
-    type: BS
-    channel: "BS23_1"
-    services: [265]
-  - name: "ディズニーｃｈ"
-    type: BS
-    channel: "BS23_3"
-    services: [256]
-  - name: "ＢＳ朝日１"
-    type: BS
-    channel: "BS01_3"
-    services: [151, 152, 153]
-  - name: "ＷＯＷＯＷプライム"
-    type: BS
-    channel: "BS03_3"
-    services: [191]
-  - name: "ＷＯＷＯＷライブ"
-    type: BS
-    channel: "BS05_2"
-    services: [192]
-  - name: "ＷＯＷＯＷライブ"
-    type: BS
-    channel: "BS05_3"
-    services: [192]
-  - name: "ＢＳ１２トゥエルビ"
-    type: BS
-    channel: "BS09_1"
-    services: [222]
-  - name: "ＢＳ１１イレブン"
-    type: BS
-    channel: "BS09_3"
-    services: [211]
-  - name: "ＢＳ日テレ"
-    type: BS
-    channel: "BS13_3"
-    services: [141, 142, 143]
-  - name: "ＷＯＷＯＷプラス"
-    type: BS
-    channel: "BS21_3"
-    services: [252]
-  - name: "Ｊ：ＣＯＭ　ＢＳ"
-    type: BS
-    channel: "BS23_2"
-    services: [260]
-  # --- CS (110度CS) ---
-  # channel = CSn (n=偶数トランスポンダ番号 2-24, recpt1 互換)。
+#   - name: "ＢＳ朝日１"
+#     type: BS
+#     channel: "BS01_0"
+#     services: [151, 152, 153]
+#   - name: "ＢＳ－ＴＢＳ"
+#     type: BS
+#     channel: "BS01_1"
+#     services: [161, 162, 163]
+#   - name: "ＢＳテレ東"
+#     type: BS
+#     channel: "BS01_2"
+#     services: [171, 172, 173]
+#   - name: "ＷＯＷＯＷプライム"
+#     type: BS
+#     channel: "BS03_0"
+#     services: [191]
+#   - name: "ＢＳアニマックス"
+#     type: BS
+#     channel: "BS03_1"
+#     services: [236]
+#   - name: "ＢＳ釣りビジョン"
+#     type: BS
+#     channel: "BS03_2"
+#     services: [251]
+#   - name: "ＷＯＷＯＷライブ"
+#     type: BS
+#     channel: "BS05_0"
+#     services: [192]
+#   - name: "ＷＯＷＯＷシネマ"
+#     type: BS
+#     channel: "BS05_1"
+#     services: [193]
+#   - name: "ＢＳ１１イレブン"
+#     type: BS
+#     channel: "BS09_0"
+#     services: [211]
+#   - name: "ＢＳ１１イレブン"
+#     type: BS
+#     channel: "BS09_2"
+#     services: [211]
+#   - name: "ＢＳ日テレ"
+#     type: BS
+#     channel: "BS13_0"
+#     services: [141, 142, 143]
+#   - name: "ＢＳフジ・１８１"
+#     type: BS
+#     channel: "BS13_1"
+#     services: [181, 182, 183]
+#   - name: "放送大学テレビ"
+#     type: BS
+#     channel: "BS13_2"
+#     services: [231, 232]
+#   - name: "ＮＨＫ　ＢＳ"
+#     type: BS
+#     channel: "BS15_0"
+#     services: [101, 102]
+#   - name: "ＢＳ１０プレミアム"
+#     type: BS
+#     channel: "BS15_1"
+#     services: [201]
+#   - name: "ＢＳ１０"
+#     type: BS
+#     channel: "BS15_2"
+#     services: [200]
+#   - name: "Ｊ　ＳＰＯＲＴＳ　４"
+#     type: BS
+#     channel: "BS19_0"
+#     services: [245]
+#   - name: "Ｊ　ＳＰＯＲＴＳ　１"
+#     type: BS
+#     channel: "BS19_1"
+#     services: [242]
+#   - name: "Ｊ　ＳＰＯＲＴＳ　２"
+#     type: BS
+#     channel: "BS19_2"
+#     services: [243]
+#   - name: "Ｊ　ＳＰＯＲＴＳ　３"
+#     type: BS
+#     channel: "BS19_3"
+#     services: [244]
+#   - name: "ＷＯＷＯＷプラス"
+#     type: BS
+#     channel: "BS21_0"
+#     services: [252]
+#   - name: "日本映画専門ｃｈ"
+#     type: BS
+#     channel: "BS21_1"
+#     services: [255]
+#   - name: "グリーンチャンネル"
+#     type: BS
+#     channel: "BS21_2"
+#     services: [234]
+#   - name: "ディズニーｃｈ"
+#     type: BS
+#     channel: "BS23_0"
+#     services: [256]
+#   - name: "ＢＳよしもと"
+#     type: BS
+#     channel: "BS23_1"
+#     services: [265]
+#   - name: "ディズニーｃｈ"
+#     type: BS
+#     channel: "BS23_3"
+#     services: [256]
+#   - name: "ＢＳ朝日１"
+#     type: BS
+#     channel: "BS01_3"
+#     services: [151, 152, 153]
+#   - name: "ＷＯＷＯＷプライム"
+#     type: BS
+#     channel: "BS03_3"
+#     services: [191]
+#   - name: "ＷＯＷＯＷライブ"
+#     type: BS
+#     channel: "BS05_2"
+#     services: [192]
+#   - name: "ＷＯＷＯＷライブ"
+#     type: BS
+#     channel: "BS05_3"
+#     services: [192]
+#   - name: "ＢＳ１２トゥエルビ"
+#     type: BS
+#     channel: "BS09_1"
+#     services: [222]
+#   - name: "ＢＳ１１イレブン"
+#     type: BS
+#     channel: "BS09_3"
+#     services: [211]
+#   - name: "ＢＳ日テレ"
+#     type: BS
+#     channel: "BS13_3"
+#     services: [141, 142, 143]
+#   - name: "ＷＯＷＯＷプラス"
+#     type: BS
+#     channel: "BS21_3"
+#     services: [252]
+#   - name: "Ｊ：ＣＯＭ　ＢＳ"
+#     type: BS
+#     channel: "BS23_2"
+#     services: [260]
+#   # --- CS (110度CS) ---
+#   # channel = CSn (n=偶数トランスポンダ番号 2-24, recpt1 互換)。
   - name: "ＴＢＳチャンネル１"
     type: CS
     channel: "CS2"
@@ -283,44 +293,415 @@ channels:
     services: [223, 257, 295, 300]
   # --- BS4K / BS8K (ISDB-S3) ---
   # channel = 5桁 StreamID。BS8K (45280) は .111 に無いため現行 config から引き継ぎ。
-  - name: "ＢＳ朝日　４Ｋ"
-    type: BS4K
-    channel: "45168"
-    services: [151]
-  - name: "ＢＳテレ東４Ｋ"
-    type: BS4K
-    channel: "45169"
-    services: [171]
-  - name: "ＢＳ日テレ　４Ｋ"
-    type: BS4K
-    channel: "45170"
-    services: [141]
-  - name: "ショップチャンネル"
-    type: BS4K
-    channel: "45232"
+#   - name: "ＢＳ朝日　４Ｋ"
+#     type: BS4K
+#     channel: "45168"
+#     services: [151]
+#   - name: "ＢＳテレ東４Ｋ"
+#     type: BS4K
+#     channel: "45169"
+#     services: [171]
+#   - name: "ＢＳ日テレ　４Ｋ"
+#     type: BS4K
+#     channel: "45170"
+#     services: [141]
+#   - name: "ショップチャンネル"
+#     type: BS4K
+#     channel: "45232"
+#     services: [211]
+#   - name: "４Ｋ　ＱＶＣ"
+#     type: BS4K
+#     channel: "45234"
+#     services: [221]
+#   # BS8K NHK (左旋)。NID 不明のため services.json には未収録 (初回スキャンで取得)。
+#   - name: "BS8K NHK"
+#     type: BS4K
+#     channel: "45280"
+#     services: [102]
+#   - name: "ＮＨＫ　ＢＳＰ４Ｋ"
+#     type: BS4K
+#     channel: "45328"
+#     services: [101]
+#   - name: "ＢＳ－ＴＢＳ　４Ｋ"
+#     type: BS4K
+#     channel: "45329"
+#     services: [161]
+#   - name: "ＢＳフジ４Ｋ"
+#     type: BS4K
+#     channel: "45330"
+#     services: [181]
+# 
+  # --- CATV / トラモジ (ISDB-C) ---
+  # BS/BS4K は routes で衛星波を優先し、CATV トラモジへフォールバック。
+  # CATV タイプは 2K (b25dec)。BS4K は TLV のため type BS4K (b61dec)。
+  - name: "BS10（CATV）"
+    type: CATV
+    channel: "U38"
+    services: [200]
+    routes:
+      - tuner: SMB400
+        channel: "BS15_2"
+      - tuner: SMB400
+  - name: "BS10プレミアム（CATV）"
+    type: CATV
+    channel: "U39"
+    services: [201, 800]
+    routes:
+      - tuner: SMB400
+        channel: "BS15_1"
+      - tuner: SMB400
+  - name: "BS12トゥエルビ（CATV）"
+    type: CATV
+    channel: "U45"
+    services: [222]
+    routes:
+      - tuner: SMB400
+        channel: "BS09_1"
+      - tuner: SMB400
+  - name: "J:COM　BS（CATV）"
+    type: CATV
+    channel: "U47"
+    services: [260]
+    routes:
+      - tuner: SMB400
+        channel: "BS23_2"
+      - tuner: SMB400
+  - name: "BS朝日1（CATV）"
+    type: CATV
+    channel: "U50"
+    services: [151, 152, 153, 753, 755, 756, 757]
+    routes:
+      - tuner: SMB400
+        channel: "BS01_0"
+      - tuner: SMB400
+  - name: "BS-TBS（CATV）"
+    type: CATV
+    channel: "U51"
+    services: [161, 162, 163, 169, 766, 768]
+    routes:
+      - tuner: SMB400
+        channel: "BS01_1"
+      - tuner: SMB400
+  - name: "WOWOWプライム（CATV）"
+    type: CATV
+    channel: "U52"
+    services: [191, 791, 792]
+    routes:
+      - tuner: SMB400
+        channel: "BS03_0"
+      - tuner: SMB400
+  - name: "ＢＳテレ東（CATV）"
+    type: CATV
+    channel: "U53"
+    services: [171, 172, 173, 179, 777, 778]
+    routes:
+      - tuner: SMB400
+        channel: "BS01_2"
+      - tuner: SMB400
+  - name: "BS日テレ（CATV）"
+    type: CATV
+    channel: "U54"
+    services: [141, 142, 143, 144, 744, 745, 746]
+    routes:
+      - tuner: SMB400
+        channel: "BS13_0"
+      - tuner: SMB400
+  - name: "BSフジ・181（CATV）"
+    type: CATV
+    channel: "U55"
+    services: [181, 182, 183, 188, 189, 780, 781]
+    routes:
+      - tuner: SMB400
+        channel: "BS13_1"
+      - tuner: SMB400
+  - name: "NHK BS（CATV）"
+    type: CATV
+    channel: "U56"
+    services: [101, 102, 103, 700, 701, 707, 929]
+    routes:
+      - tuner: SMB400
+        channel: "BS15_0"
+      - tuner: SMB400
+  - name: "BS11イレブン（CATV）"
+    type: CATV
+    channel: "C43"
     services: [211]
-  - name: "４Ｋ　ＱＶＣ"
+    routes:
+      - tuner: SMB400
+        channel: "BS09_0"
+      - tuner: SMB400
+  - name: "WOWOWライブ（CATV）"
+    type: CATV
+    channel: "C54"
+    services: [192]
+    routes:
+      - tuner: SMB400
+        channel: "BS05_0"
+      - tuner: SMB400
+  - name: "WOWOWシネマ（CATV）"
+    type: CATV
+    channel: "C55"
+    services: [193]
+    routes:
+      - tuner: SMB400
+        channel: "BS05_1"
+      - tuner: SMB400
+  - name: "NHK　BSP4K（CATV）"
     type: BS4K
-    channel: "45234"
-    services: [221]
-  # BS8K NHK (左旋)。NID 不明のため services.json には未収録 (初回スキャンで取得)。
-  - name: "BS8K NHK"
-    type: BS4K
-    channel: "45280"
-    services: [102]
-  - name: "ＮＨＫ　ＢＳＰ４Ｋ"
-    type: BS4K
-    channel: "45328"
+    channel: "C20"
     services: [101]
-  - name: "ＢＳ－ＴＢＳ　４Ｋ"
+    routes:
+      - tuner: SMB400
+        channel: "45328"
+      - tuner: SMB400
+  - name: "BS朝日　4K（CATV）"
     type: BS4K
-    channel: "45329"
+    channel: "C21"
+    services: [151]
+    routes:
+      - tuner: SMB400
+        channel: "45168"
+      - tuner: SMB400
+  - name: "BS-TBS　4K（CATV）"
+    type: BS4K
+    channel: "C22"
     services: [161]
-  - name: "ＢＳフジ４Ｋ"
+    routes:
+      - tuner: SMB400
+        channel: "45329"
+      - tuner: SMB400
+  - name: "BS日テレ　4K（CATV）"
     type: BS4K
-    channel: "45330"
+    channel: "U44"
+    services: [141]
+    routes:
+      - tuner: SMB400
+        channel: "45170"
+      - tuner: SMB400
+  - name: "BSフジ4K（CATV）"
+    type: BS4K
+    channel: "U43"
     services: [181]
-
+    routes:
+      - tuner: SMB400
+        channel: "45330"
+      - tuner: SMB400
+  - name: "C17（CATV）"
+    type: BS4K
+    channel: "C17"
+    services: []
+    routes:
+      - tuner: SMB400
+  - name: "C18（CATV）"
+    type: BS4K
+    channel: "C18"
+    services: []
+    routes:
+      - tuner: SMB400
+  - name: "C19（CATV）"
+    type: BS4K
+    channel: "C19"
+    services: []
+    routes:
+      - tuner: SMB400
+  - name: "日テレジータス HD（CATV）"
+    type: CATV
+    channel: "U14"
+    services: [404, 760, 761]
+    routes:
+      - tuner: SMB400
+  - name: "日経CNBC（CATV）"
+    type: CATV
+    channel: "U15"
+    services: [303, 451, 500]
+    routes:
+      - tuner: SMB400
+  - name: "テレ朝チャンネル1（CATV）"
+    type: CATV
+    channel: "U17"
+    services: [755, 757, 758]
+    routes:
+      - tuner: SMB400
+  - name: "ムービープラス（CATV）"
+    type: CATV
+    channel: "U19"
+    services: [450, 557, 602]
+    routes:
+      - tuner: SMB400
+  - name: "20（CATV）"
+    type: CATV
+    channel: "U20"
+    services: []
+    routes:
+      - tuner: SMB400
+  - name: "29（CATV）"
+    type: CATV
+    channel: "U29"
+    services: []
+    routes:
+      - tuner: SMB400
+  - name: "日テレNEWS24 HD（CATV）"
+    type: CATV
+    channel: "U31"
+    services: [305, 505, 554]
+    routes:
+      - tuner: SMB400
+  - name: "アクションチャンネル（CATV）"
+    type: CATV
+    channel: "U33"
+    services: [559, 560, 600]
+    routes:
+      - tuner: SMB400
+  - name: "ジュエリー☆GSTV（CATV）"
+    type: CATV
+    channel: "U34"
+    services: [202, 350, 751]
+    routes:
+      - tuner: SMB400
+  - name: "ディズニーCh（CATV）"
+    type: CATV
+    channel: "U35"
+    services: [603, 607, 770]
+    routes:
+      - tuner: SMB400
+  - name: "37（CATV）"
+    type: CATV
+    channel: "U37"
+    services: []
+    routes:
+      - tuner: SMB400
+  - name: "東映チャンネルHD（CATV）"
+    type: CATV
+    channel: "U40"
+    services: [503, 601, 763]
+    routes:
+      - tuner: SMB400
+  - name: "41（CATV）"
+    type: CATV
+    channel: "U41"
+    services: []
+    routes:
+      - tuner: SMB400
+  - name: "ゴルフネットワーク（CATV）"
+    type: CATV
+    channel: "U42"
+    services: [403, 552, 920]
+    routes:
+      - tuner: SMB400
+  - name: "46（CATV）"
+    type: CATV
+    channel: "U46"
+    services: []
+    routes:
+      - tuner: SMB400
+  - name: "ショップチャンネル＋（CATV）"
+    type: CATV
+    channel: "U48"
+    services: [204, 556, 702]
+    routes:
+      - tuner: SMB400
+  - name: "49（CATV）"
+    type: CATV
+    channel: "U49"
+    services: []
+    routes:
+      - tuner: SMB400
+  - name: "スカイA（CATV）"
+    type: CATV
+    channel: "U58"
+    services: [400, 553, 653]
+    routes:
+      - tuner: SMB400
+  - name: "ショップチャンネル4K（CATV）"
+    type: CATV
+    channel: "C14"
+    services: [430, 431]
+    routes:
+      - tuner: SMB400
+  - name: "CNNj（CATV）"
+    type: CATV
+    channel: "C39"
+    services: [302, 501, 502]
+    routes:
+      - tuner: SMB400
+  - name: "TBS NEWS（CATV）"
+    type: CATV
+    channel: "C40"
+    services: [300, 504, 555]
+    routes:
+      - tuner: SMB400
+  - name: "J SPORTS 1 HD（CATV）"
+    type: CATV
+    channel: "C41"
+    services: [405, 406]
+    routes:
+      - tuner: SMB400
+  - name: "J:COMプレミアCH（CATV）"
+    type: CATV
+    channel: "C42"
+    services: [299, 407]
+    routes:
+      - tuner: SMB400
+  - name: "NHKワールド JAPAN（CATV）"
+    type: CATV
+    channel: "C44"
+    services: [307, 767]
+    routes:
+      - tuner: SMB400
+  - name: "ディスカバリー（CATV）"
+    type: CATV
+    channel: "C46"
+    services: [652, 764, 923]
+    routes:
+      - tuner: SMB400
+  - name: "MTV（CATV）"
+    type: CATV
+    channel: "C49"
+    services: [352, 558, 700]
+    routes:
+      - tuner: SMB400
+  - name: "ヒストリーチャンネル（CATV）"
+    type: CATV
+    channel: "C50"
+    services: [650, 651, 752]
+    routes:
+      - tuner: SMB400
+  - name: "歌謡ポップスCH（CATV）"
+    type: CATV
+    channel: "C51"
+    services: [354, 402, 605]
+    routes:
+      - tuner: SMB400
+  - name: "スポーツライブ＋（CATV）"
+    type: CATV
+    channel: "C52"
+    services: [410, 551, 921]
+    routes:
+      - tuner: SMB400
+  - name: "ショップチャンネル（CATV）"
+    type: CATV
+    channel: "C53"
+    services: [200, 756, 759]
+    routes:
+      - tuner: SMB400
+  - name: "C56（CATV）"
+    type: CATV
+    channel: "C56"
+    services: []
+    routes:
+      - tuner: SMB400
+  - name: "ザ・シネマHD（CATV）"
+    type: CATV
+    channel: "C57"
+    services: [452, 753, 754]
+    routes:
+      - tuner: SMB400
+  - name: "ご案内チャンネル（CATV）"
+    type: CATV
+    channel: "C58"
+    services: [285, 290, 440, 922, 945]
+    routes:
+      - tuner: SMB400
 tuners:
   # 1台の物理チューナーが GR / BS / CS / BS4K を兼用する。
   # channel 値(GR=物理ch, BS=BSxx_y, CS=CSn/NDxx, BS4K=5桁StreamID)は
@@ -330,7 +711,7 @@ tuners:
   # ACAS チップ（必要なら acas_proxy 経由）を使って行う。
   # BS4K は mirakc 側で passthrough される（tlvDecoder / decode-filter は不要）。
   - name: SMB400
-    types: [GR, BS, CS, BS4K]
+    types: [GR, BS, CS, BS4K, CATV]
     command: /data/local/tmp/smb400-tuner.sh {{{channel}}}
     time-limit: 30000
 
@@ -340,6 +721,9 @@ filters:
   tuner-filter:
     command: 'sh -c ''case {{{channel_type}}} in BS4K) exec /data/local/tmp/b61dec -key "$(cat /data/local/tmp/.acas_key)" --host 127.0.0.1:40773 ;; *) exec /data/local/tmp/b25dec --host 127.0.0.1:40773 ;; esac'''
   # tuner-filter で復号済みのため decode-filter は空のまま。
+  # TSMF (CATV) 抽出。現状の CATV は tsmf-rel-ts 未使用のため実行されない。
+  tsmf-filter:
+    command: '/data/local/tmp/mirakc/bin/mirakc-arib filter-tsmf --relative-ts={{{tsmf_rel_ts}}}'
   service-filter:
     command: '/data/local/tmp/mirakc/bin/mirakc-arib filter-service --sid={{{sid}}}'
   program-filter:

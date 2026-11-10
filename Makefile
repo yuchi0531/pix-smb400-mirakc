@@ -98,6 +98,11 @@ build-bins: android-libs
 	    src/startup.c src/tuner-stream-ng.c \
 	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so $(ANDROID_LIBS)/ld-android.so \
 	    -o bin/tuner-stream-ng
+	@echo "[*] Building tuner-stream-isdbc (ISDB-C/J.83C)..."
+	$(CC_ARM) $(CFLAGS_ARM) -O2 -std=gnu17 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 \
+	    src/startup.c src/tuner-stream-isdbc.c \
+	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so $(ANDROID_LIBS)/ld-android.so \
+	    -o bin/tuner-stream-isdbc
 	@echo "[*] Building tuner-stream-bs-ng..."
 	$(CC_ARM) $(CFLAGS_ARM) \
 	    src/startup.c src/tuner-stream-bs-ng.c \
@@ -131,7 +136,7 @@ build-bins: android-libs
 	    src/startup.c src/acas_proxy.c \
 	    $(ANDROID_LIBS)/libc.so $(ANDROID_LIBS)/libdl.so $(ANDROID_LIBS)/ld-android.so \
 	    -o bin/acas_proxy
-	@echo "[+] Built bin/tuner-stream-ng, tuner-stream-bs-ng, b61dec, tuner-stream-bs, b25dec, acas_proxy"
+	@echo "[+] Built bin/tuner-stream-ng, tuner-stream-isdbc, tuner-stream-bs-ng, b61dec, tuner-stream-bs, b25dec, acas_proxy"
 
 # リモートデコーダ用: b61dec / b25dec を x86_64 (Linux) 向けにビルドする。
 # ACAS は SMB400 の acas_proxy を --host host[:port] で使う（ローカルACAS不要）。
@@ -166,7 +171,7 @@ build-webui:
 # 初回は bin/ が未生成のため、先に存在チェックして案内を出す
 # （make build-bins がクロスツールチェーンで生成する）。
 check-tuner-bins:
-	@missing=""; for f in bin/tuner-stream-ng bin/tuner-stream-bs-ng bin/b61dec bin/tuner-stream-bs bin/b25dec bin/acas_proxy; do \
+	@missing=""; for f in bin/tuner-stream-ng bin/tuner-stream-isdbc bin/tuner-stream-bs-ng bin/b61dec bin/tuner-stream-bs bin/b25dec bin/acas_proxy; do \
 	    [ -f "$$f" ] || missing="$$missing $$f"; \
 	done; \
 	if [ -n "$$missing" ]; then \
@@ -181,6 +186,7 @@ check-tuner-bins:
 push-bins: check-tuner-bins build-mirakc-armv7
 	@echo "[*] Pushing tuner/decoder binaries..."
 	$(ADB) push bin/tuner-stream-ng    $(DEVICE_TMP)/tuner-stream-ng
+	$(ADB) push bin/tuner-stream-isdbc $(DEVICE_TMP)/tuner-stream-isdbc
 	$(ADB) push bin/tuner-stream-bs-ng $(DEVICE_TMP)/tuner-stream-bs-ng
 	$(ADB) push bin/b61dec             $(DEVICE_TMP)/b61dec
 	$(ADB) push bin/tuner-stream-bs    $(DEVICE_TMP)/tuner-stream-bs
@@ -193,6 +199,7 @@ push-bins: check-tuner-bins build-mirakc-armv7
 	$(ADB) push $(MIRAKC_ARM_DIR)/mirakc-arib-tlv $(MIRAKC_DIR)/bin/mirakc-arib-tlv
 	$(ADB) shell chmod +x \
 	    $(DEVICE_TMP)/tuner-stream-ng \
+	    $(DEVICE_TMP)/tuner-stream-isdbc \
 	    $(DEVICE_TMP)/tuner-stream-bs-ng \
 	    $(DEVICE_TMP)/b61dec \
 	    $(DEVICE_TMP)/tuner-stream-bs \
@@ -316,12 +323,12 @@ reboot: remote-reboot
 log:
 	$(ADB) shell "tail -50 $(DEVICE_TMP)/mirakc.log"
 
-# BS4K 45168 から 5 秒受信して先頭バイトを表示
+# BS4K C20（NHK BSP4K トラモジ）から 5 秒受信して先頭バイトを表示
 # チューナー出力は「生（スクランブル済み）TLV」。
 # 復号するには b61dec（ローカルまたは --host リモート）を通す。
 test:
-	@echo "Streaming BS4K 45168 for 5s (raw TLV)..."
-	@curl -s --max-time 8 http://$(DEVICE_IP):40772/api/channels/BS4K/45168/stream \
+	@echo "Streaming BS4K C20 for 5s (TLV)..."
+	@curl -s --max-time 8 http://$(DEVICE_IP):40772/api/channels/BS4K/C20/stream \
 	    | od -v -t x1 2>/dev/null | head -4
 
 # CS CS2 から 5 秒受信して MPEG-TS の先頭バイトを表示
