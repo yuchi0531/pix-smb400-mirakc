@@ -404,9 +404,6 @@ chmod 600 /data/local/tmp/.acas_key
 wc -c /data/local/tmp/.acas_key
 ```
 
-> リモートデコーダを使う場合は、同じキーを `bin/x86/.acas_key` に置いてください
-> （`b61dec-remote` がバイナリの隣から自動で読みます）。
-> `.acas_key` は秘密情報なのでコミットしないでください。
 
 ---
 
