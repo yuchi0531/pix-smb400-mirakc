@@ -326,9 +326,9 @@ ARMv7 (glibc) 版の mirakc 3バイナリはリポジトリに含まれません
 make build-mirakc-armv7       # = bash scripts/build_mirakc_armv7.sh
 ```
 
-スクリプトは [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K)（既定ブランチ `smb400-minimal` = BS4K/TLV 差分のみの最小ブランチ）、[yuchi0531/mirakc-arib-tlv](https://github.com/yuchi0531/mirakc-arib-tlv)（v0.1.0）、[mirakc/mirakc-arib](https://github.com/mirakc/mirakc-arib)（既定 `0.24.41`＝最新リリースタグ）を `tmp/mirakc-cross-build/` に clone してクロスビルドし、`tmp/mirakc-armv7/` を更新します。ビルドは再利用のため再実行可能です。
+スクリプトは [yuchi0531/mirakc-BS4K](https://github.com/yuchi0531/mirakc-BS4K)（既定ブランチ `main` = routes/CATV 対応）、[yuchi0531/mirakc-arib-tlv](https://github.com/yuchi0531/mirakc-arib-tlv)（v0.1.0）、[mirakc/mirakc-arib](https://github.com/mirakc/mirakc-arib)（既定 `0.24.41`＝最新リリースタグ）を `tmp/mirakc-cross-build/` に clone してクロスビルドし、`tmp/mirakc-armv7/` を更新します。ビルドは再利用のため再実行可能です。
 
-> 既定では追従先ブランチの最新（mirakc-BS4K は `smb400-minimal`）をビルドします。再現性のため特定のコミット／タグに固定したい場合は
+> 既定では追従先ブランチの最新（mirakc-BS4K は `main`）をビルドします。再現性のため特定のコミット／タグに固定したい場合は
 > `MIRAKC_REF` / `MIRAKC_TLV_REF` / `MIRAKC_ARIB_REF` を指定してください（例: `MIRAKC_REF=858a5b7 make build-mirakc-armv7`）。
 
 ---
@@ -598,11 +598,14 @@ ffplay "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/st
 
 - チャンネル形式: `C13`–`C63`（CATV 計画: C13-C22 = 111–165 MHz, C23-C63 = 225–465 MHz）、`U13`–`U62`（UHF 計画: 473–767 MHz）
 - 手順: `tunertest_oem` で RF を ISDB-T 6 MHz に合わせて 12 秒セトリング → CXD2857 を I2C (bus2, SLV-T `0xD8` / SLV-X `0xDC`) で ISDB-C に切替 → DMX から生 TS
-- mirakc の `ChannelType` は `GR/BS/CS/SKY/BS4K` のみ（`CATV` は未対応）。そのため 2K は `type: BS`、BS4K は `type: BS4K` として登録し、`channel` に `Cxx` / `Uxx` を指定する
-- 2K は `b25dec`（B-CAS / MULTI2）で復号、BS4K は `b61dec`（TLV / AES）で復号
-- **C-CAS（CATV オリジナル）は復号しません**（本ブランチでは C-CAS チャンネルは未登録）
+- 本ブランチは mirakc-BS4K の **`main`**（`routes` / `CATV` 対応）を参照してビルドする
+- BS/BS4K は `channels[].routes` で **衛星波 → CATV トラモジ** の順に登録（衛星優先。起動失敗時のみ次経路へフォールバック）
+- 2K（BS 2K トラモジ + CATV オリジナル）は `type: CATV`、`b25dec`（B-CAS / MULTI2）で復号
+- BS4K は TLV のため `type: BS4K` のまま（`b61dec`）。routes は衛星 `45xxx` → CATV `Cxx/Uxx`
+- **C-CAS（CATV オリジナル）は復号しません**（`b25dec` では復号不可）
+- 起動プローブ: `MIRAKC_TUNER_STARTUP_PROBE_TIMEOUT_MS=20000`（既定 1s では SMB400 のコールドスタート/ISDB-C セトリングに間に合わない）
 - 実測: `C14` (117 MHz) = PAT program 430、`C43` (345 MHz) = TSID 16528 (BS11)、`C20` (153 MHz) = BS4K TLV
-- `config/config.yml` には BS 2K トラモジ 14ch と BS4K トラモジ 8ch を登録済み（旧衛星 BS/BS4K エントリはコメントアウト）
+- `config/config.yml` には BS 2K 14ch / BS4K 8ch / CATV オリジナル 33ch を登録済み（旧衛星 BS/BS4K エントリはコメントアウトし、routes の衛星経路として参照）
 
 
 | name | type | channel |
@@ -869,8 +872,10 @@ adb -s <デバイスのIPアドレス>:5555 shell "grep MemAvailable /proc/memin
   - `mirakc-arib` は `vendor/aribb24` を `./bootstrap`（autoreconf）→ `./configure` でビルドするため、**autotools が無いと失敗します**。`--no-install-recommends` で構築したコンテナでは特に不足しがちです（`sudo apt install autoconf automake libtool pkg-config patch`）。
 - **rust target 不足**: スクリプトが自動で `rustup target add armv7-unknown-linux-gnueabihf` を実行します。手動なら `rustup target add armv7-unknown-linux-gnueabihf`。
 - **ネットワーク / GitHub に到達できない**: `git clone` に失敗します。プロキシ環境では `https_proxy` 等を設定します。
-- **Rust が古い**: ブランチごとに MSRV が異なります（`smb400-minimal` は `rust-version = 1.98.1`、`main` は 1.99.0）。`rustup update stable` で更新してください（古いと `cargo build` が MSRV エラーで止まります）。
-- ソースの追従先は `MIRAKC_REF` / `MIRAKC_TLV_REF` / `MIRAKC_ARIB_REF` で変更できます（既定は `smb400-minimal` / `v0.1.0` / `0.24.41`）。特定のコミットに固定すれば再現性が上がります。
+- **Rust が古い**: ブランチごとに MSRV が異なります（`main` は `rust-version = 1.99.0`）。`rustup update stable` で更新してください（古いと `cargo build` が MSRV エラーで止まります）。
+  - `main` を使う場合は `rustup toolchain install 1.99.0` と `RUSTUP_TOOLCHAIN=1.99.0 rustup target add armv7-unknown-linux-gnueabihf` を実行してください。
+  - クロス GCC は `--sysroot` 付きラッパ（例: `~/toolchains/armhf/bin/armhf-gcc`）を `CC` / `CXX` / `CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER` に指定すると、システム既定の `/usr/arm-linux-gnueabihf` が見つからない環境でもリンクできます。
+- ソースの追従先は `MIRAKC_REF` / `MIRAKC_TLV_REF` / `MIRAKC_ARIB_REF` で変更できます（既定は `main` / `v0.1.0` / `0.24.41`）。特定のコミットに固定すれば再現性が上がります。
 
 ### mirakc が起動しない
 

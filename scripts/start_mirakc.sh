@@ -173,6 +173,8 @@ chroot "$ROOTFS" /bin/sh -l -c "
     # キャッシュが新鮮な間(30日)は起動時スキャンをスキップする。
     # 定期ジョブ(08:01/20:01)は通常どおり実行される。
     export MIRAKC_EPG_FRESH_PERIOD=30d
+    # SMB400 tuners need >1 s to produce data (cold start / ISDB-C settle).
+    export MIRAKC_TUNER_STARTUP_PROBE_TIMEOUT_MS=20000
     cd /data/local/tmp/mirakc
     exec /data/local/tmp/mirakc/bin/mirakc -c /data/local/tmp/mirakc/config.yml
 " >> "$LOG" 2>&1
