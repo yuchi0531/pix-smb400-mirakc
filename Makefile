@@ -323,12 +323,12 @@ reboot: remote-reboot
 log:
 	$(ADB) shell "tail -50 $(DEVICE_TMP)/mirakc.log"
 
-# BS4K 45168 から 5 秒受信して先頭バイトを表示
+# BS4K C20（NHK BSP4K トラモジ）から 5 秒受信して先頭バイトを表示
 # チューナー出力は「生（スクランブル済み）TLV」。
 # 復号するには b61dec（ローカルまたは --host リモート）を通す。
 test:
-	@echo "Streaming BS4K 45168 for 5s (raw TLV)..."
-	@curl -s --max-time 8 http://$(DEVICE_IP):40772/api/channels/BS4K/45168/stream \
+	@echo "Streaming BS4K C20 for 5s (TLV)..."
+	@curl -s --max-time 8 http://$(DEVICE_IP):40772/api/channels/BS4K/C20/stream \
 	    | od -v -t x1 2>/dev/null | head -4
 
 # CS CS2 から 5 秒受信して MPEG-TS の先頭バイトを表示

@@ -428,10 +428,13 @@ make start ADB_TARGET=<デバイスのIPアドレス>:5555
 
 ### Step 10: ストリームを確認する
 
-チューナー出力は**生（スクランブル済み）**です。`make test` は生ストリームの先頭を表示します。
+現在の `config/config.yml` は `tuner-filter` で mirakc 側が復号する（BS4K=`b61dec`、GR/BS/CS/CATV=`b25dec`）ため、**API の `/api/channels/.../stream` は復号済み**です。`smb400-tuner.sh` を直接実行した場合のみ生（スクランブル済み）です。
 復号確認は `b61dec` / `b25dec`（ローカル、または `bin/x86/` のリモートバイナリ）を通してください（[リモートデコーダ / ACAS proxy](#リモートデコーダ--acas-proxy) 参照）。
 
-**BS4K（生TLV）:**
+**BS4K（TLV）:**
+
+> 現在の config は BS4K を CATV トラモジ（`C20`/`C21`/`C22`/`U43`/`U44`）で routes 登録しています。`45168`/`45280` は衛星 BS4K/BS8K の例（現在はコメントアウト）。
+
 
 ```sh
 make test ADB_TARGET=<デバイスのIPアドレス>:5555
@@ -440,17 +443,17 @@ make test ADB_TARGET=<デバイスのIPアドレス>:5555
 出力例:
 
 ```
-Streaming BS4K 45168 for 5s (raw TLV)...
-0000000 7f 02 00 60 60 00 00 00 ...
+Streaming BS4K C20 for 5s (TLV)...
+0000000 7f 03 05 a6 00 19 61 06 ...
 ```
 
-- 先頭が `7f` なら TLV ストリームを受信できています（中身はスクランブル済み）。
+- 先頭が `7f` なら TLV です。`tuner-filter`（`b61dec`）により復号済み（直接チューナー出力はスクランブル）。
 - 出力なし → チューナーが応答していない → `make log` でログを確認。
 
 **復号して確認（ローカルACAS or リモートACAS）:**
 
 ```sh
-curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/channels/BS4K/45168/stream" \
+curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/channels/BS4K/C20/stream" \
   | bin/x86/b61dec-remote --host <SMB400のIP> | od -v -t x1 | head -4
 # 7f 02 / 7f 03 が現れれば復号成功。失敗時は ACAS 契約/EMM/マスターキーを確認。
 ```
@@ -505,12 +508,14 @@ BS8K（左旋・ISDB-S3）にも対応しています。`config/config.yml` に�
   `type` は BS4K と同じ ISDB-S3 経路のため `BS4K` のままです。
 - 復号経路は BS4K と共通です。チューナーは生（スクランブル済み）TLV を出力し、
   `b61dec`（ローカル、またはリモートの `b61dec-remote` + ACAS proxy）が復号します。
-- ストリーム確認（生TLV）:
+> `45280`（BS8K）は現在コメントアウトされています。BS8K を使う場合は衛星 BS4K/BS8K エントリを戻してください（API の path も `BS4K/45280`）。
+
+- ストリーム確認（TLV）:
 
 ```sh
 curl -s --max-time 8 "http://<デバイスのIPアドレス>:40772/api/channels/BS4K/45280/stream" \
   | od -v -t x1 | head -4
-# 先頭は TLV ヘッダ 7f ...（復号前なので中身はスクランブル済み）
+# 先頭は TLV ヘッダ 7f ...（config の tuner-filter により復号済み。直接チューナー出力はスクランブル）
 ```
 
 - 復号して確認する場合:
@@ -568,6 +573,8 @@ ffprobe gr27.ts        # mpeg2video が見えれば復号成功
 
 ### BS（ISDB-S）の受信について
 
+> 現在の `config/config.yml` は BS 2K を **CATV トラモジ**（`C43` 等）として `type: CATV` で登録し、`routes` で衛星波→CATV の順に試します。以下の `BSxx_y` は衛星経路の内部チャンネル名で、API からは `type: CATV` の `Cxx`（例: `/api/channels/CATV/C43/stream`）を使います。衛星 BS を有効にする場合はコメントアウトされた `BSxx_y` エントリを戻してください。
+
 NHK BS などの**BS（ISDB-S, MPEG-TS）**にも対応しています。
 2K BS は ARIB STD-B25 系の **MULTI2**（B-CAS 方式, CA_system_id 0x0005）でスクランブルされています。
 チューナーは**生の MPEG-TS**を出力し、`b25dec`（ローカル、またはリモートの `b25dec-remote` + ACAS proxy）が
@@ -622,7 +629,9 @@ ffplay "http://<デバイスのIPアドレス>:40772/api/services/<serviceId>/st
 
 ## リモートデコーダ / ACAS proxy
 
-SMB400 のチューナーコマンドは**生（スクランブル済み）**の MPEG-TS / TLV を出力します。
+> 現在の `config/config.yml` は `tuner-filter` で mirakc 側が復号するため、**API のストリームは復号済み**です。このセクションのリモートデコーダは、`smb400-tuner.sh` を直接実行した生ストリームや、tuner-filter を持たない構成向けです。
+
+SMB400 のチューナーコマンド（`smb400-tuner.sh`）は**生（スクランブル済み）**の MPEG-TS / TLV を出力します。
 復号は次のどちらかで行います。
 
 - ローカル: `b25dec` / `b61dec`（SMB400 上）
@@ -683,7 +692,7 @@ cat scrambled.ts  | bin/x86/b25dec-remote --host 192.168.1.133 > plain.ts
 再生にはmmt/tlvに対応した [FFmpeg](https://github.com/superfashi/FFmpeg) が必要です。
 
 ```sh
-ffplay http://<デバイスのIPアドレス>:40772/api/channels/BS4K/45168/stream
+ffplay http://<デバイスのIPアドレス>:40772/api/channels/BS4K/C20/stream
 ```
 
 ### EPGStation で録画・視聴

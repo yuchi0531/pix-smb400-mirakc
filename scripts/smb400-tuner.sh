@@ -8,13 +8,16 @@
 #   GR:   integer 13-62    → tuner-stream-ng  (raw MPEG-TS, ISDB-T)
 #   BS:   BSxx_y           → tuner-stream-bs-ng (raw MPEG-TS, ISDB-S)
 #   CS:   CSn / NDxx       → tuner-stream-bs-ng (raw MPEG-TS, 110度CS)
-#   BS4K: integer ≥40000   → tuner-stream-bs-ng (raw TLV, ISDB-S3)
+#   BS4K: integer ≥40000 → tuner-stream-bs-ng (raw TLV, ISDB-S3)
+#         Cxx / Uxx       → tuner-stream-isdbc (CATV トラモジ / ISDB-C)
+#   CATV: C13-C63 / U13-U62       → tuner-stream-isdbc (raw MPEG-TS, ISDB-C)
 #
 # Decoding is NOT done here.  This script only tunes and emits the raw
 # (scrambled) MPEG-TS / TLV.  The decoders (b25dec / b61dec, locally or on a
 # remote host) and the ACAS proxy handle ECM/Ks/AES.
 #   - GR / BS / CS(2K): MULTI2 (ARIB STD-B25)  → b25dec
 #   - BS4K / BS8K:      ACAS-RMP (ARIB STD-B61) → b61dec
+#   - CATV (ISDB-C):    C-CAS。b25dec では復号不可（CATV オリジナル）
 #
 # tuner-stream-* run via chroot /proc/1/root to access the Android linker
 # paths required by libhi_msp.
