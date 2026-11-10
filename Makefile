@@ -24,9 +24,9 @@
 # ---------- 変更可能な設定 ----------
 # ADB_TARGET 未指定時は adb devices から自動検出
 # 複数台接続時は明示指定: make <target> ADB_TARGET=192.168.1.126:5555
-# ADB を使わないターゲット (help, build-decoders-remote, build-mirakc-armv7, build-webui) は ADB なしでも実行できる。
+# ADB を使わないターゲット (help, build-decoders-remote, build-mirakc-armv7, build-webui, chscan) は ADB なしでも実行できる。
 ifndef ADB_TARGET
-  ifeq ($(filter help build-decoders-remote build-mirakc-armv7 build-webui,$(MAKECMDGOALS)),)
+  ifeq ($(filter help build-decoders-remote build-mirakc-armv7 build-webui chscan,$(MAKECMDGOALS)),)
     _DETECTED := $(shell adb devices 2>/dev/null | awk '/\tdevice$$/{print $$1}')
     ifeq ($(words $(_DETECTED)),0)
       $(error No ADB device connected. Run: adb connect <ip>:<port>)
@@ -70,7 +70,7 @@ CFLAGS_ARM   := -march=armv7-a -mfloat-abi=softfp -mfpu=vfpv3 \
 .PHONY: build-bins build-decoders-remote build-mirakc-armv7 build-webui android-libs \
         check-tuner-bins push-all push-bins push-scripts push-config push-webui \
         deploy-mirakc setup-runtime \
-        start stop restart remote-reboot reboot log test test-cs help
+        start stop restart remote-reboot reboot chscan log test test-cs help
 
 # ---- ビルド (src/ → bin/) ----
 
@@ -310,6 +310,15 @@ stop:
 
 restart: stop start
 
+# チャンネルスキャン（GR / BS / CS / BS4K）。CATV は CATV=1 のときだけ。
+#   make chscan ADB_TARGET=192.168.1.133:5555
+#   make chscan HOST=192.168.1.133 CATV=1
+#   make chscan HOST=192.168.1.133 CHSCAN_ARGS="--quick"
+# 生成物: config/config.yml / config/channels.yml / config/services.json
+CHSCAN_TARGET ?= $(if $(HOST),$(HOST),$(ADB_TARGET))
+chscan:
+	bash scripts/chscan.sh $(CHSCAN_TARGET) $(if $(CATV),--catv,) $(CHSCAN_ARGS)
+
 # デバイスごとリモート再起動し、mirakc の復帰まで待つ。
 # 前提: USB Boot ピンを常時ショート（ジャンパ）しておくこと。
 # 他端末からは: scripts/smb400_reboot.sh <device-ip>:5555
@@ -361,6 +370,7 @@ help:
 	@echo "  make restart             再起動 (mirakc のみ)"
 	@echo "  make remote-reboot       デバイスごと再起動 (USB Boot ジャンパ前提)"
 	@echo "  make reboot              remote-reboot の別名"
+	@echo "  make chscan              チャンネルスキャン (CATV=1 で CATV も)"
 	@echo "  make log                 ログ確認 (tail -50)"
 	@echo "  make test                BS4K ストリーム疎通テスト"
 	@echo "  make test-cs             CS ND02 ストリーム疎通テスト (実機・契約依存)"

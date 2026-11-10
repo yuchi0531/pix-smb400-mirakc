@@ -120,6 +120,9 @@ VS Code の **Dev Containers** 拡張、または GitHub Codespaces で「Reopen
 │   ├── start_mirakc.sh              mirakc 起動スクリプト（chroot + glibc ランタイム）
 │   ├── stop_android_tv.sh           Android TV 不要プロセス停止
 │   ├── crash_guard.sh               クラッシュ監視ウォッチドッグ
+│   ├── chscan.sh                    チャンネルスキャン（ホスト側）
+│   ├── chscan_one.sh                1チャンネルスキャン（デバイス側）
+│   ├── chscan_gen.py                スキャン結果から config を生成
 │   ├── smb400_reboot.sh             デバイスごとリモート再起動（ホスト側）
 │   ├── write_usb_boot.sh            USBメモリへブートファイル3点を書き込む（要 sudo）
 │   ├── setup_proot.sh               Alpine rootfs + glibc-armhf 初回セットアップ
@@ -485,6 +488,45 @@ bash boot/build_initramfs.sh /path/to/_kernel.img.extracted/988000
 
 ---
 
+## チャンネルスキャン（make chscan）
+
+`config/config.yml` / `config/channels.yml` / `config/services.json` はサンプルです。
+実環境のチャンネルは `make chscan` でスキャンして生成できます。
+
+```sh
+# 1) ACAS マスターキーを用意（BS4K/BS8K 用。64 hex）
+#    リポジトリ直下の .acas_key、または --key <file> で指定
+echo '<64-hex>' > .acas_key
+
+# 2) スキャン（GR / BS / CS / BS4K）
+make chscan HOST=192.168.1.133
+
+# CATV (ISDB-C: C13-C63 / U13-U62) もスキャン
+make chscan HOST=192.168.1.133 CATV=1
+
+# 短い動作確認（主要チャンネルのみ）
+make chscan HOST=192.168.1.133 CHSCAN_ARGS="--quick"
+```
+
+- `.acas_key` は `/data/local/tmp/.acas_key` へ自動転送されます（`b61dec` がバイナリ隣から読みます）。
+- スキャンには `make start` 済み（chroot マウント済み）と、**チューナーが空いていること**が必要です。
+  録画/視聴中は `--force` を付けない限り中止します。
+- 生成物:
+  - `config/config.yml` — `channels:` ブロックをスキャン結果で置換（server / tuners / filters / jobs は維持）
+  - `config/channels.yml` — 生成された channels の参照用
+  - `config/services.json` — mirakc の EPG サービスキャッシュ
+- 反映:
+  ```sh
+  make push-config ADB_TARGET=192.168.1.133:5555
+  adb -s 192.168.1.133:5555 push config/services.json /data/local/tmp/mirakc/epg/services.json
+  make restart ADB_TARGET=192.168.1.133:5555
+  ```
+- フルスキャンは時間がかかります（GR 13-62 / BS の TSID 表 / CS 2-24 / BS4K 既知 StreamID）。
+  `--quick` は主要チャンネルのみを対象にします。
+- CATV は `CATV=1`（または `--catv`）のときだけ C13-C63 / U13-U62 を追加します。
+
+---
+
 ## API
 
 mirakc は Mirakurun 互換の REST API を提供します（`/api/version`・`/api/channels`・`/api/services` 等）。
@@ -826,6 +868,7 @@ make stop                # 停止（チューナー・デスクランブラー�
 make restart             # mirakc のみ再起動
 make remote-reboot       # デバイスごとリモート再起動（USB Boot ジャンパ前提）
 make reboot              # remote-reboot の別名
+make chscan              # チャンネルスキャン (CATV=1 で CATV も)
 make log                 # ログ確認（最新 50 行）
 make test                # BS4K 疎通テスト
 make test-cs             # CS CS2 疎通テスト
