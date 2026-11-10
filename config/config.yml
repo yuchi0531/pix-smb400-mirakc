@@ -48,7 +48,8 @@ channels:
   - name: "ＴＯＫＹＯ　ＭＸ"
     type: GR
     channel: "16"
-    services: [23608, 23609, 23610, 23992, 23993]
+    services: [23608, 23609, 23610]
+    excluded-services: [23992, 23993]
   - name: "Ｊ：ＣＯＭチャンネル"
     type: GR
     channel: "18"
@@ -56,39 +57,48 @@ channels:
   - name: "フジテレビ"
     type: GR
     channel: "21"
-    services: [1056, 1057, 1058, 1440]
+    services: [1056, 1057, 1058]
+    excluded-services: [1440]
   - name: "ＴＢＳ"
     type: GR
     channel: "22"
-    services: [1048, 1049, 1183, 1432]
+    services: [1048, 1049, 1183]
+    excluded-services: [1432]
   - name: "テレビ東京"
     type: GR
     channel: "23"
-    services: [1072, 1073, 1074, 1456]
+    services: [1072, 1073, 1074]
+    excluded-services: [1456]
   - name: "テレビ朝日"
     type: GR
     channel: "24"
-    services: [1064, 1065, 1066, 1448]
+    services: [1064, 1065, 1066]
+    excluded-services: [1448]
   - name: "日テレ"
     type: GR
     channel: "25"
-    services: [1040, 1041, 1424]
+    services: [1040, 1041]
+    excluded-services: [1424]
   - name: "ＮＨＫＥテレ・東京"
     type: GR
     channel: "26"
-    services: [1032, 1033, 1034, 1416]
+    services: [1032, 1033, 1034]
+    excluded-services: [1416]
   - name: "ＮＨＫ総合・東京"
     type: GR
     channel: "27"
-    services: [1024, 1025, 1408]
+    services: [1024, 1025]
+    excluded-services: [1408]
   - name: "チバテレ"
     type: GR
     channel: "30"
-    services: [27704, 27705, 27706, 28088]
+    services: [27704, 27705, 27706]
+    excluded-services: [28088]
   - name: "テレ玉"
     type: GR
     channel: "32"
-    services: [29752, 29753, 29754, 30136]
+    services: [29752, 29753, 29754]
+    excluded-services: [30136]
   # --- BS (ISDB-S, 従来2K衛星) ---
   # channel = BSxx_y (xx=トランスポンダ番号, y=相対TS)。smb400-tuner.sh の TSID 表にあるもののみ。
 #   - name: "ＢＳ朝日１"
