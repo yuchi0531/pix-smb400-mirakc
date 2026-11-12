@@ -333,7 +333,7 @@ channels:
 # 
   # --- CATV / トラモジ (ISDB-C) ---
   # BS/BS4K を含む CATV トラモジは、衛星波とは独立したチャンネルとして登録（routes なし）。
-  # CATV タイプは 2K (b25dec)。BS4K は TLV のため type BS4K (b61dec)。
+  # CATV（トラモジ含む）はすべて type CATV (b25dec)。衛星 BS4K のみ type BS4K (b61dec)。
   - name: "BS10（CATV）"
     type: CATV
     channel: "U38"
@@ -391,35 +391,35 @@ channels:
     channel: "C55"
     services: [193]
   - name: "NHK　BSP4K（CATV）"
-    type: BS4K
+    type: CATV
     channel: "C20"
     services: [101]
   - name: "BS朝日　4K（CATV）"
-    type: BS4K
+    type: CATV
     channel: "C21"
     services: [151]
   - name: "BS-TBS　4K（CATV）"
-    type: BS4K
+    type: CATV
     channel: "C22"
     services: [161]
   - name: "BS日テレ　4K（CATV）"
-    type: BS4K
+    type: CATV
     channel: "U44"
     services: [141]
   - name: "BSフジ4K（CATV）"
-    type: BS4K
+    type: CATV
     channel: "U43"
     services: [181]
   - name: "C17（CATV）"
-    type: BS4K
+    type: CATV
     channel: "C17"
     services: []
   - name: "C18（CATV）"
-    type: BS4K
+    type: CATV
     channel: "C18"
     services: []
   - name: "C19（CATV）"
-    type: BS4K
+    type: CATV
     channel: "C19"
     services: []
   - name: "日テレジータス HD（CATV）"
